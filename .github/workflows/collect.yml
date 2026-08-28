@@ -10,7 +10,12 @@ on:
     # GitHub cron is UTC. NSE 09:15–15:30 IST == 03:45–10:00 UTC. Wide margin;
     # the script itself no-ops outside market hours and on holidays.
     - cron: "*/5 3-10 * * 1-5"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Poll even if the market is closed (for testing)"
+        type: boolean
+        default: false
 
 concurrency:
   group: collect
@@ -39,7 +44,7 @@ jobs:
       - name: Poll
         env:
           PREDICTOR_LIVE_ROOT: collected
-        run: python scripts/collect_tick.py
+        run: python scripts/collect_tick.py ${{ inputs.force && '--force' || '' }}
 
       - name: Commit new ticks
         run: |
