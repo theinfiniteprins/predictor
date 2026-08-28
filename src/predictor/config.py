@@ -49,6 +49,8 @@ class LabelingConfig:
     entry_freq_minutes: int
     intrabar_tiebreak: str
     barriers_symmetric: bool
+    barrier_time_scaling: bool
+    session_minutes: int
 
 
 @dataclass(frozen=True)
@@ -65,6 +67,7 @@ class GlobalCuesConfig:
     nasdaq: str
     usdinr: str
     crude: str
+    india_vix: str
     gift_nifty: str
 
     def active(self) -> dict[str, str]:
@@ -178,6 +181,8 @@ def load_config(path: str | Path | None = None) -> Config:
             entry_freq_minutes=int(lab["entry_freq_minutes"]),
             intrabar_tiebreak=lab["intrabar_tiebreak"],
             barriers_symmetric=bool(lab["barriers_symmetric"]),
+            barrier_time_scaling=bool(lab.get("barrier_time_scaling", False)),
+            session_minutes=int(lab.get("session_minutes", 375)),
         ),
         data=DataConfig(
             bar_interval=d["bar_interval"],
@@ -190,6 +195,7 @@ def load_config(path: str | Path | None = None) -> Config:
             nasdaq=gc.get("nasdaq", ""),
             usdinr=gc.get("usdinr", ""),
             crude=gc.get("crude", ""),
+            india_vix=gc.get("india_vix", ""),
             gift_nifty=gc.get("gift_nifty", ""),
         ),
         collector=CollectorConfig(

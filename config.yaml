@@ -21,6 +21,11 @@ labeling:
   entry_freq_minutes: 15
   intrabar_tiebreak: "one_minute"  # one_minute | drop
   barriers_symmetric: true
+  # ATR(14) measures a whole SESSION's range. A mid-session entry has less time
+  # left, so scale the barrier by sqrt(minutes_to_vertical / session_minutes).
+  # false -> barriers held at full daily sigma (very few touches; ~97% timeout).
+  barrier_time_scaling: true
+  session_minutes: 375             # 09:15 -> 15:30, the "1 daily sigma" horizon
 
 data:
   bar_interval: "5m"            # Track A primary interval
@@ -33,6 +38,7 @@ global_cues:                    # all free via yfinance; prior-session close use
   nasdaq: "^IXIC"
   usdinr: "INR=X"
   crude: "CL=F"
+  india_vix: "^INDIAVIX"        # daily history (the live snapshots only start from today)
   gift_nifty: ""                # no reliable free ticker; left blank, handled as optional
 
 collector:                      # Track B

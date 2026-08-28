@@ -5,12 +5,14 @@ __pycache__/
 .pytest_cache/
 .ipynb_checkpoints/
 
-# local data lake + artifacts — regenerable / large / grows daily
-data/
-models/
-logs/
-reports/cv/
-reports/*.csv
+# local data lake + artifacts — regenerable / large / grows daily.
+# Anchored with a leading slash so they only match at the repo root and DON'T
+# swallow src/predictor/data/ or src/predictor/models/.
+/data/
+/models/
+/logs/
+/reports/cv/
+/reports/*.csv
+/reports/*.json
 
-# keep the reports dir structure
 !reports/.gitkeep

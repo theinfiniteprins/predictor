@@ -13,13 +13,20 @@ See `intraday-prediction-tool-plan.md` (kept in Downloads) for the full design r
 |---|---|---|
 | 0 | Finalize spec | ✅ done — see `config.yaml` |
 | 1 | Data pipeline (Track A backfill + Track B live collector) | 🚧 in progress |
-| 2 | Feature engineering | not started |
-| 3 | Triple-barrier labeling | not started |
-| 4 | Baseline primary model + purged walk-forward CV | not started |
-| 5 | Meta-labeling confidence filter | not started |
-| 6 | Backtest, tune k + confidence threshold | not started |
-| 7 | Paper-trade 4–8 weeks | not started |
+| 2 | Feature engineering (`features/`) | ✅ built |
+| 3 | Triple-barrier labeling (`labeling/`) | ✅ built |
+| 4 | Primary model + purged/embargoed walk-forward CV | ✅ built |
+| 5 | Meta-labeling confidence filter | ✅ built |
+| 6 | Backtest, threshold sweep | ✅ built |
+| 7 | Paper-trade 4–8 weeks | pending data depth |
 | 8 | (optional) sequence models / ensembling on larger dataset | not started |
+
+> **Data depth, not code, is the blocker now.** The full pipeline runs end-to-end,
+> but with only ~59 days of yfinance history (~105 directional labels at k=1.0) the
+> models cannot yet learn a real edge — the primary just predicts "timeout". This
+> is expected (see §11 of the plan). Keep the cloud collector running; revisit
+> training in 2–3 months. `k=0.6` produces enough directional labels to exercise
+> the meta path in the meantime.
 
 ## Phase 0 parameters (finalized)
 
@@ -44,6 +51,12 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
+# Full modelling pipeline
+python scripts/build_dataset.py            # features + triple-barrier labels -> data/processed/
+python scripts/train.py --tune 200         # walk-forward primary + meta, Optuna search, save bundle
+python scripts/backtest.py                 # threshold sweep on the OOF predictions
+python scripts/predict_today.py            # live call for the current entry point (or --at HH:MM)
+
 # Track A — one-shot historical backfill (run whenever; re-runnable)
 python scripts/run_backfill.py --all
 
