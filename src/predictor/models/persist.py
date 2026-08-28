@@ -19,16 +19,18 @@ _CARD = CONFIG.paths.models_dir / "model_card.json"
 
 def save_bundle(
     primary, meta, feature_columns: list[str], params: dict, metrics: dict,
-    fire_threshold: float | None = None,
+    fire_threshold: float | None = None, train_data_end: str | None = None,
 ) -> None:
     CONFIG.paths.models_dir.mkdir(parents=True, exist_ok=True)
     joblib.dump(
         {"primary": primary, "meta": meta, "feature_columns": feature_columns,
-         "params": params, "fire_threshold": fire_threshold},
+         "params": params, "fire_threshold": fire_threshold,
+         "train_data_end": train_data_end},
         _BUNDLE,
     )
     _CARD.write_text(json.dumps({
         "trained_at": now_ist().isoformat(),
+        "train_data_end": train_data_end,
         "params": params,
         "metrics": metrics,
         "k": CONFIG.labeling.k,

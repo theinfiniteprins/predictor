@@ -29,11 +29,11 @@ def main() -> None:
 
     CONFIG.paths.ensure()
 
-    from predictor.data.live_collector import collect_once, run
+    from predictor.data.live_collector import collect_tick, run
 
     if args.once:
-        row = collect_once()
-        log.info("single poll result: %s", row)
+        n = collect_tick()
+        log.info("single poll appended %d bar-rows", n)
         return
 
     try:

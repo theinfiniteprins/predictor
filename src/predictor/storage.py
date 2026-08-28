@@ -104,6 +104,27 @@ def append_rows(rows: pd.DataFrame, day: dt.date | None = None) -> Path:
     return write_parquet(combined, path)
 
 
+def append_bars(rows: pd.DataFrame, day: dt.date | None = None) -> Path:
+    """Append 1-min bar rows to the live store, de-duped on (bar_time, ticker).
+
+    ``rows`` needs ``bar_time`` and ``ticker`` columns. Re-appending an overlapping
+    fetch is harmless (keeps the last value for each bar).
+    """
+    for col in ("bar_time", "ticker"):
+        if col not in rows.columns:
+            raise ValueError(f"rows must contain a '{col}' column")
+    day = day or pd.Timestamp.now(tz=IST).date()
+    path = _live_path(day)
+
+    combined = pd.concat([read_parquet(path), rows], ignore_index=True) if path.exists() else rows.copy()
+    combined = (
+        combined.drop_duplicates(subset=["bar_time", "ticker"], keep="last")
+        .sort_values(["bar_time", "ticker"])
+        .reset_index(drop=True)
+    )
+    return write_parquet(combined, path)
+
+
 def read_live(day: dt.date) -> pd.DataFrame:
     path = _live_path(day)
     if not path.exists():

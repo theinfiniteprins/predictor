@@ -31,15 +31,24 @@ def _load(source: str, name: str) -> pd.DataFrame:
     return df
 
 
-def load_intraday(interval: str | None = None, *, instrument: str = "NIFTY50") -> pd.DataFrame:
-    """5-min (or configured) OHLCV bars for the primary or correlated index."""
-    interval = interval or CONFIG.data.bar_interval
+def _load_unified_or_raw(instrument: str, interval: str) -> pd.DataFrame:
+    """Prefer data/interim/<inst>_<interval>_unified.parquet (yfinance + collector,
+    built by predictor.data.consolidate); fall back to the raw yfinance pull."""
+    uni = CONFIG.paths.interim / f"{instrument}_{interval}_unified.parquet"
+    if uni.exists():
+        df = read_parquet(uni)
+        return df[~df.index.duplicated(keep="last")].sort_index()
     return _load("yfinance", f"{instrument}_{interval}")
 
 
+def load_intraday(interval: str | None = None, *, instrument: str = "NIFTY50") -> pd.DataFrame:
+    """5-min (or configured) OHLCV bars for the primary or correlated index."""
+    return _load_unified_or_raw(instrument, interval or CONFIG.data.bar_interval)
+
+
 def load_fine(instrument: str = "NIFTY50") -> pd.DataFrame:
-    """1-min bars (short history) for intrabar barrier tie-breaking."""
-    return _load("yfinance", f"{instrument}_{CONFIG.data.fine_interval}")
+    """1-min bars for intrabar barrier tie-breaking (yfinance ~7d + collector growth)."""
+    return _load_unified_or_raw(instrument, CONFIG.data.fine_interval)
 
 
 def load_daily(instrument: str = "NIFTY50", *, prefer: str = "yfinance") -> pd.DataFrame:
@@ -78,8 +87,11 @@ def load_option_chain_snapshots() -> pd.DataFrame:
     return df.sort_values("timestamp").reset_index(drop=True)
 
 
-def load_live_ticks(start: dt.date | None = None, end: dt.date | None = None) -> pd.DataFrame:
-    """Cloud/laptop collector ticks (data/raw/live + collected/), concatenated."""
+def load_collected_bars(ticker: str | None = None) -> pd.DataFrame:
+    """All collector 1-min bars (data/raw/live/ + collected/), de-duped.
+
+    Returns columns [bar_time, ticker, open, high, low, close, volume], IST-aware.
+    """
     import glob
 
     roots = [CONFIG.paths.raw_live, CONFIG.paths.root / "collected"]
@@ -88,15 +100,23 @@ def load_live_ticks(start: dt.date | None = None, end: dt.date | None = None) ->
         for p in glob.glob(str(root / "date=*" / "quotes.parquet")):
             frames.append(read_parquet(p))
     if not frames:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=["bar_time", "ticker", *_OHLC, "volume"])
+
     df = pd.concat(frames, ignore_index=True)
-    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True).dt.tz_convert(IST)
-    df = df.drop_duplicates(subset=["timestamp", "ticker"]).sort_values("timestamp")
-    if start:
-        df = df[df["timestamp"].dt.date >= start]
-    if end:
-        df = df[df["timestamp"].dt.date <= end]
-    return df.reset_index(drop=True)
+    # tolerate the pre-consolidation schema (poll-time 'timestamp', no 'bar_time')
+    if "bar_time" not in df.columns and "timestamp" in df.columns:
+        df = df.rename(columns={"timestamp": "bar_time"})
+    df["bar_time"] = pd.to_datetime(df["bar_time"], utc=True).dt.tz_convert(IST)
+    keep = ["bar_time", "ticker", *[c for c in (*_OHLC, "volume") if c in df.columns]]
+    df = (
+        df[keep]
+        .drop_duplicates(subset=["bar_time", "ticker"], keep="last")
+        .sort_values(["bar_time", "ticker"])
+        .reset_index(drop=True)
+    )
+    if ticker:
+        df = df[df["ticker"] == ticker].reset_index(drop=True)
+    return df
 
 
 def trading_days_in_bars(bars: pd.DataFrame) -> list[dt.date]:

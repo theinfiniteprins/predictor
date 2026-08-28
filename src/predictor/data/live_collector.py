@@ -1,13 +1,13 @@
-"""Track B — the live collector. START THIS RUNNING NOW.
+"""Track B - the live collector. START THIS RUNNING (it already is, on GitHub Actions).
 
-Every ``collector.poll_seconds`` during market hours it appends one quote row for
-``^NSEI`` to ``data/raw/live/date=YYYY-MM-DD/quotes.parquet``. Every 15 minutes it
-also takes an option-chain + India-VIX snapshot. In 2–3 months this is a real
-proprietary intraday dataset — the whole plan hinges on it accumulating.
+Each poll fetches *all* of today's 1-minute bars for ^NSEI + ^NSEBANK and appends
+the completed ones to ``<PREDICTOR_LIVE_ROOT>/date=YYYY-MM-DD/quotes.parquet``,
+de-duplicated on (bar_time, ticker). Because every poll re-fetches the whole day,
+a missed poll is automatically backfilled by the next one - so a 5-minute cron
+still yields a complete 1-minute series.
 
-Run it foreground in a terminal, or point Windows Task Scheduler at
-``scripts/run_collector.py`` with a daily 09:10 IST trigger (it exits itself after
-close).
+``scripts/collect_tick.py`` is the one-shot entrypoint (GitHub Actions). ``run()``
+is the local looping version for when the laptop is on.
 """
 
 from __future__ import annotations
@@ -21,66 +21,55 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from ..calendar import IST, is_trading_day, market_is_open, now_ist, session_bounds
 from ..config import CONFIG
 from ..logging_setup import get_logger
-from ..storage import append_rows
+from ..storage import append_bars
 from .option_chain import snapshot as option_snapshot
 
 log = get_logger("live_collector")
 
 _SNAPSHOT_EVERY = pd.Timedelta(minutes=15)
+_OHLCV = ["open", "high", "low", "close", "volume"]
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
-def _latest_minute_bar(ticker: str) -> dict:
+def _recent_minute_bars(ticker: str, lookback: int = 40) -> pd.DataFrame:
     df = yf.Ticker(ticker).history(period="1d", interval="1m", auto_adjust=False)
     if df is None or df.empty:
         raise RuntimeError(f"no 1m data for {ticker}")
     df = df.rename(columns=str.lower)
-    last = df.iloc[-1]
-    bar_ts = pd.DatetimeIndex([df.index[-1]])
-    bar_ts = (bar_ts.tz_localize("UTC") if bar_ts.tz is None else bar_ts).tz_convert(IST)[0]
-    return {
-        "bar_time": bar_ts,
-        "open": float(last["open"]),
-        "high": float(last["high"]),
-        "low": float(last["low"]),
-        "close": float(last["close"]),
-        "volume": float(last.get("volume", 0) or 0),
-    }
+    idx = pd.DatetimeIndex(df.index)
+    df.index = (idx.tz_localize("UTC") if idx.tz is None else idx).tz_convert(IST)
+    df = df.iloc[:-1]                       # drop the still-forming current minute
+    df = df.tail(lookback)[[c for c in _OHLCV if c in df.columns]]
+    df.index.name = "bar_time"
+    return df
 
 
-def _poll_one(ticker: str, poll_ts: pd.Timestamp) -> dict | None:
-    try:
-        bar = _latest_minute_bar(ticker)
-    except Exception as exc:  # noqa: BLE001
-        log.warning("quote poll failed for %s: %s", ticker, exc)
-        return None
-    return {"timestamp": poll_ts, "ticker": ticker, "source": "yfinance_1m", **bar}
-
-
-def collect_once(ticker: str | None = None) -> dict | None:
-    ticker = ticker or CONFIG.instrument.yf_ticker
-    poll_ts = now_ist()
-    row = _poll_one(ticker, poll_ts)
-    if row is None:
-        return None
-    append_rows(pd.DataFrame([row]), day=poll_ts.date())
-    log.info("tick %s  %s close=%.2f  bar=%s", poll_ts.strftime("%H:%M:%S"),
-             ticker, row["close"], row["bar_time"].strftime("%H:%M"))
-    return row
-
-
-def collect_tick(tickers: list[str] | None = None) -> list[dict]:
-    """Poll several tickers in one shot and append all rows. Cloud-collector entrypoint."""
+def collect_tick(tickers: list[str] | None = None, lookback: int = 40) -> int:
+    """One poll: append recent completed 1-min bars for each ticker. Returns row count."""
     tickers = tickers or [CONFIG.instrument.yf_ticker, CONFIG.instrument.correlated_ticker]
-    poll_ts = now_ist()
-    rows = [r for r in (_poll_one(t, poll_ts) for t in tickers) if r is not None]
-    if not rows:
-        log.warning("collect_tick: no rows this poll")
-        return []
-    append_rows(pd.DataFrame(rows), day=poll_ts.date())
-    log.info("tick %s  %s", poll_ts.strftime("%H:%M:%S"),
-             "  ".join(f"{r['ticker']}={r['close']:.2f}" for r in rows))
-    return rows
+    now = now_ist()
+    frames: list[pd.DataFrame] = []
+    for t in tickers:
+        try:
+            b = _recent_minute_bars(t, lookback).reset_index()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("poll failed for %s: %s", t, exc)
+            continue
+        b["ticker"] = t
+        b["source"] = "yfinance_1m"
+        b["ingested_at"] = now
+        frames.append(b)
+
+    if not frames:
+        log.warning("collect_tick: nothing fetched this poll")
+        return 0
+
+    rows = pd.concat(frames, ignore_index=True)
+    append_bars(rows, day=now.date())
+    latest = rows.sort_values("bar_time").groupby("ticker").last()["close"]
+    log.info("poll %s  %d bar-rows  %s", now.strftime("%H:%M:%S"), len(rows),
+             "  ".join(f"{k}={v:.2f}" for k, v in latest.items()))
+    return len(rows)
 
 
 def _sleep_until_open() -> None:
@@ -98,14 +87,12 @@ def _sleep_until_open() -> None:
 
 
 def run(run_option_snapshots: bool = True) -> None:
-    log.info("live collector starting - poll=%ss ticker=%s",
-             CONFIG.collector.poll_seconds, CONFIG.instrument.yf_ticker)
+    log.info("live collector starting - poll=%ss", CONFIG.collector.poll_seconds)
     last_snapshot: pd.Timestamp | None = None
 
     while True:
         if not market_is_open():
             ts = now_ist()
-            # if the session is over for today, stop; a scheduler restarts us tomorrow
             if is_trading_day(ts.date()):
                 _, close_dt = session_bounds(ts.date())
                 if ts > close_dt:

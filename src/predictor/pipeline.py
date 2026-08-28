@@ -69,6 +69,8 @@ def train_and_validate(n_trials: int = 0) -> pd.DataFrame:
 
     final_primary = fit_final(X, y, params=params)
     final_meta = fit_final_meta(X, y, primary.oof, params=None)
-    save_bundle(final_primary, final_meta, list(X.columns), params, summary, fire_threshold)
+    train_data_end = str(pd.Timestamp(df["day"].max()).date())   # robust to date/datetime64
+    save_bundle(final_primary, final_meta, list(X.columns), params, summary,
+                fire_threshold, train_data_end)
 
     return oof

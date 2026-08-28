@@ -29,8 +29,8 @@ def main() -> None:
 
     from predictor.data.live_collector import collect_tick
 
-    rows = collect_tick()
-    log.info("collected %d rows", len(rows))
+    n = collect_tick()
+    log.info("appended %d bar-rows", n)
 
 
 if __name__ == "__main__":

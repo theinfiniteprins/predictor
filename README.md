@@ -18,7 +18,7 @@ See `intraday-prediction-tool-plan.md` (kept in Downloads) for the full design r
 | 4 | Primary model + purged/embargoed walk-forward CV | ✅ built |
 | 5 | Meta-labeling confidence filter | ✅ built |
 | 6 | Backtest, threshold sweep | ✅ built |
-| 7 | Paper-trade 4–8 weeks | pending data depth |
+| 7 | Paper-trade 4–8 weeks (`papertrade.py`, `scripts/paper_log.py`) | ✅ harness built, accumulating |
 | 8 | (optional) sequence models / ensembling on larger dataset | not started |
 
 > **Data depth, not code, is the blocker now.** The full pipeline runs end-to-end,
@@ -50,38 +50,44 @@ pip install -r requirements.txt
 
 ## Usage
 
+### Whenever the laptop is on (keeps the record growing)
+
 ```bash
-# Full modelling pipeline
-python scripts/build_dataset.py            # features + triple-barrier labels -> data/processed/
+git pull                                   # fresh collector data from GitHub Actions
+python scripts/run_backfill.py --all        # refresh the yfinance window + cues + option chain
+python scripts/paper_log.py                 # log newly-resolved entries + print live-vs-backtest summary
+```
+
+### Retrain (monthly, or whenever enough new data has accumulated)
+
+```bash
+python scripts/build_dataset.py            # consolidates collector+yfinance, then features + labels
 python scripts/train.py --tune 200         # walk-forward primary + meta, Optuna search, save bundle
 python scripts/backtest.py                 # threshold sweep on the OOF predictions
-python scripts/predict_today.py            # live call for the current entry point (or --at HH:MM)
+```
 
-# Track A — one-shot historical backfill (run whenever; re-runnable)
-python scripts/run_backfill.py --all
+### Ad hoc
 
-# Track B (laptop) — the looping live collector, full feed incl. option chain
-python scripts/run_collector.py
-
-# Track B (laptop) — one-off catch-up of NSE-direct data (option chain / PCR / VIX)
-python scripts/run_backfill.py --option-chain
+```bash
+python scripts/consolidate.py              # merge collector + yfinance into data/interim/*_unified.parquet
+python scripts/predict_today.py --at 11:15 # what the model says for one entry point
+python scripts/run_collector.py            # local looping collector (for when the laptop IS on in-hours)
 ```
 
 ### Track B in the cloud (primary — runs even when the laptop is off)
 
-`.github/workflows/collect.yml` polls `^NSEI` + `^NSEBANK` every ~5 min during NSE
-market hours on GitHub Actions and commits one parquet/day under `collected/`.
+`.github/workflows/collect.yml` runs every ~5 min during NSE market hours on GitHub
+Actions. Each run fetches **all** of the day's completed 1-min bars for `^NSEI` +
+`^NSEBANK` and commits them under `collected/date=YYYY-MM-DD/quotes.parquet`
+(de-duped on `(bar_time, ticker)`, so a missed slot is backfilled by the next run).
 NSE-direct endpoints (option chain, PCR/OI, FII-DII) block datacenter IPs, so the
-cloud job is **quotes only** — those features are a laptop catch-up job (above).
+cloud job is **bars only** — those are a laptop catch-up job (`run_backfill.py`).
 
-Setup (one time):
-1. Push this repo to a **public** GitHub repo.
-2. Actions → enable workflows. Settings → Actions → General → Workflow permissions
-   → "Read and write permissions".
-3. It starts on the next 5-min slot; trigger once manually from the Actions tab.
-
-Pull the accumulated data to the laptop: `git pull`. Merge `collected/` into the
-main store when building datasets (Phase 2+).
+`scripts/consolidate.py` (also called by `build_dataset.py`) merges `collected/`
+with the rolling yfinance pull into `data/interim/<inst>_{1m,5m}_unified.parquet`,
+which is what the model reads. This is how the training history grows past
+yfinance's ~60-day window — days that age out of yfinance are retained from the
+previously-built unified store.
 
 > Scheduled Actions are best-effort — a slot can lag 5–15 min or occasionally be
 > skipped. Fine for 5-min bars; if you later want the true 90-second feed, run

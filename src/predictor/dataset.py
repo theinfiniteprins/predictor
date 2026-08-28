@@ -19,14 +19,21 @@ _PATH = CONFIG.paths.processed / "dataset.parquet"
 _META = CONFIG.paths.processed / "dataset_meta.json"
 
 
-def build(k: float | None = None) -> pd.DataFrame:
+def build(k: float | None = None, consolidate: bool = True) -> pd.DataFrame:
     k = CONFIG.labeling.k if k is None else k
+
+    if consolidate:
+        from .data.consolidate import consolidate_all
+        consolidate_all()   # merge collector data into the growing unified history
+
     labels = build_labels(k=k)
     feats = build_features()
 
     df = feats.join(labels, how="inner")
     df = df[df["label"].notna()].copy()
     df["label"] = df["label"].astype(int)
+    df["day"] = pd.to_datetime(df["day"])          # normalize date -> datetime64
+    df["t_touch"] = pd.to_datetime(df["t_touch"])
     df = df.sort_index()
 
     _PATH.parent.mkdir(parents=True, exist_ok=True)
