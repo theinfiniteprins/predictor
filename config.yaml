@@ -1,0 +1,56 @@
+# Single source of truth for Phase 0 parameters.
+# Phase 6 sweeps (k, confidence threshold, embargo) are edits to THIS file, not code.
+
+instrument:
+  name: NIFTY50
+  yf_ticker: "^NSEI"
+  option_symbol: NIFTY          # nsepython index option-chain symbol
+  correlated_ticker: "^NSEBANK" # Bank Nifty, for divergence feature (Phase 2)
+
+session:                        # IST, NSE equity/index segment
+  timezone: "Asia/Kolkata"
+  open: "09:15"
+  close: "15:30"
+
+labeling:
+  k: 1.0                        # barrier multiplier, symmetric
+  atr_window: 14                # sessions, for sigma_intraday = ATR(atr_window) / close
+  vertical_barrier: "15:20"     # timeout label = 0
+  entry_start: "09:30"          # first rolling entry point
+  entry_end: "14:30"            # last rolling entry point
+  entry_freq_minutes: 15
+  intrabar_tiebreak: "one_minute"  # one_minute | drop
+  barriers_symmetric: true
+
+data:
+  bar_interval: "5m"            # Track A primary interval
+  fine_interval: "1m"           # for intrabar tie-break (only ~7d available from yfinance)
+  backfill_period: "60d"        # yfinance max at 5m
+  daily_period: "10y"           # yfinance daily bars, for ATR + long context
+
+global_cues:                    # all free via yfinance; prior-session close used as feature
+  sp500: "^GSPC"
+  nasdaq: "^IXIC"
+  usdinr: "INR=X"
+  crude: "CL=F"
+  gift_nifty: ""                # no reliable free ticker; left blank, handled as optional
+
+collector:                      # Track B
+  poll_seconds: 90
+  source: "yfinance"            # yfinance fast_info / 1m history
+  # collector only writes between session.open and session.close on trading days
+
+cv:                             # Phase 4 — purged + embargoed walk-forward
+  embargo_minutes: 60
+  min_train_days: 20
+  test_window_days: 5
+  step_days: 5
+
+meta:                           # Phase 5
+  fire_top_fraction: 0.15       # act only on top 15% highest-confidence calls
+
+paths:
+  data_dir: "data"
+  models_dir: "models"
+  reports_dir: "reports"
+  logs_dir: "logs"

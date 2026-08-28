@@ -1,0 +1,27 @@
+# --- core data / compute ---
+pandas>=2.2
+numpy>=1.26
+pyarrow>=16.0          # parquet engine
+pyyaml>=6.0
+
+# --- data sources (all free) ---
+yfinance>=0.2.40        # ^NSEI intraday + global cues
+nsepython>=2.9          # NSE option chain, India VIX (unofficial endpoint)
+jugaad-data>=0.26       # NSE bhavcopy (daily EOD, long history) — fallback path
+requests>=2.31
+
+# --- feature engineering (Phase 2) ---
+pandas-ta>=0.3.14b0     # pure-Python TA (avoids ta-lib Windows build)
+
+# --- modeling / validation (Phase 4+) ---
+scikit-learn>=1.5
+xgboost>=2.1
+lightgbm>=4.5
+optuna>=3.6
+
+# --- scheduling / ops ---
+apscheduler>=3.10
+tenacity>=8.3           # retry wrapper for flaky endpoints
+
+# --- dev ---
+pytest>=8.2

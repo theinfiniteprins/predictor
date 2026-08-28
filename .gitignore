@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# local data lake + artifacts — regenerable / large / grows daily
+data/
+models/
+logs/
+reports/cv/
+reports/*.csv
+
+# keep the reports dir structure
+!reports/.gitkeep
