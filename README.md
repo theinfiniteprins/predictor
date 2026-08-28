@@ -44,12 +44,36 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-# Track B — the live collector. Run this every trading day (or via Task Scheduler).
-python scripts/run_collector.py
-
 # Track A — one-shot historical backfill (run whenever; re-runnable)
 python scripts/run_backfill.py --all
+
+# Track B (laptop) — the looping live collector, full feed incl. option chain
+python scripts/run_collector.py
+
+# Track B (laptop) — one-off catch-up of NSE-direct data (option chain / PCR / VIX)
+python scripts/run_backfill.py --option-chain
 ```
+
+### Track B in the cloud (primary — runs even when the laptop is off)
+
+`.github/workflows/collect.yml` polls `^NSEI` + `^NSEBANK` every ~5 min during NSE
+market hours on GitHub Actions and commits one parquet/day under `collected/`.
+NSE-direct endpoints (option chain, PCR/OI, FII-DII) block datacenter IPs, so the
+cloud job is **quotes only** — those features are a laptop catch-up job (above).
+
+Setup (one time):
+1. Push this repo to a **public** GitHub repo.
+2. Actions → enable workflows. Settings → Actions → General → Workflow permissions
+   → "Read and write permissions".
+3. It starts on the next 5-min slot; trigger once manually from the Actions tab.
+
+Pull the accumulated data to the laptop: `git pull`. Merge `collected/` into the
+main store when building datasets (Phase 2+).
+
+> Scheduled Actions are best-effort — a slot can lag 5–15 min or occasionally be
+> skipped. Fine for 5-min bars; if you later want the true 90-second feed, run
+> `scripts/run_collector.py` on an always-on box (home Pi / Oracle free VM)
+> alongside the Actions job — both append to the same store.
 
 ## Layout
 
