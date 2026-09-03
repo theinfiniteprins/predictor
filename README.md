@@ -50,28 +50,32 @@ pip install -r requirements.txt
 
 ## Usage
 
-### Whenever the laptop is on (keeps the record growing)
+### The daily command — everything in one go
 
-```bash
-git pull                                   # fresh collector data from GitHub Actions
-python scripts/run_backfill.py --all        # refresh the yfinance window + cues + option chain
-python scripts/paper_log.py                 # log newly-resolved entries + print live-vs-backtest summary
+```powershell
+D:\Predictor\run.ps1
 ```
 
-### Retrain (monthly, or whenever enough new data has accumulated)
+Runs: `git pull` → refresh raw data → build dataset → paper-log yesterday's calls
+→ retrain → backtest → print the report. ~1 min. Options: `-Tune 200` (Optuna
+search), `-K 0.6` (barrier override), `-Holdout 14` (hold out the tail as
+out-of-sample), `-SkipPull`, `-SkipBackfill`.
 
-```bash
-python scripts/build_dataset.py            # consolidates collector+yfinance, then features + labels
-python scripts/train.py --tune 200         # walk-forward primary + meta, Optuna search, save bundle
-python scripts/backtest.py                 # threshold sweep on the OOF predictions
+Unattended (runs next time the laptop is on after the trigger):
+
+```powershell
+schtasks /create /tn "PredictorDaily" /tr "powershell -ExecutionPolicy Bypass -File D:\Predictor\run.ps1" /sc daily /st 18:30 /f
 ```
 
-### Ad hoc
+### Individual steps / ad hoc
 
 ```bash
-python scripts/consolidate.py              # merge collector + yfinance into data/interim/*_unified.parquet
-python scripts/predict_today.py --at 11:15 # what the model says for one entry point
-python scripts/run_collector.py            # local looping collector (for when the laptop IS on in-hours)
+python scripts/report.py --signals         # the dashboard: dataset / model / CV / backtest / paper log
+python scripts/build_dataset.py --k 0.6     # rebuild with a different barrier multiplier
+python scripts/train.py --tune 200          # walk-forward primary + meta, Optuna search
+python scripts/predict_today.py --at 11:15  # what the model says for one entry point
+python scripts/consolidate.py               # merge collector + yfinance -> data/interim/*_unified.parquet
+python scripts/run_collector.py             # local looping collector (for when the laptop IS on in-hours)
 ```
 
 ### Track B in the cloud (primary — runs even when the laptop is off)
