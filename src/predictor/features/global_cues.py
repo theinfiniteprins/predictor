@@ -28,11 +28,13 @@ def _date_index(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def global_cue_features(target_dates: pd.DatetimeIndex) -> pd.DataFrame:
-    target = pd.DatetimeIndex(pd.Series(target_dates).dt.tz_localize(None).dt.normalize().unique())
-    target = target.sort_values()
+    target = pd.DatetimeIndex(
+        pd.Series(target_dates).dt.tz_localize(None).dt.normalize().unique()
+    ).sort_values()
     out = pd.DataFrame(index=target)
+    tgt = pd.DataFrame({"date": target.as_unit("ns")})
 
-    for name, ticker in CONFIG.global_cues.active().items():
+    for name in CONFIG.global_cues.active():
         if name in _SKIP:
             continue
         try:
@@ -43,11 +45,17 @@ def global_cue_features(target_dates: pd.DatetimeIndex) -> pd.DataFrame:
             out[f"{name}_ret5d"] = np.nan
             continue
         close = cue["close"]
-        ret1 = close.pct_change()
-        ret5 = close.pct_change(5)
-        # align onto NSE days, carry forward, then shift 1 NSE day for safety
-        out[f"{name}_ret1d"] = ret1.reindex(target, method="ffill").shift(1)
-        out[f"{name}_ret5d"] = ret5.reindex(target, method="ffill").shift(1)
+        src = pd.DataFrame({
+            "date": pd.DatetimeIndex(close.index).as_unit("ns"),
+            f"{name}_ret1d": close.pct_change().to_numpy(),
+            f"{name}_ret5d": close.pct_change(5).to_numpy(),
+        }).sort_values("date")
+        # for NSE day D use the last cue row strictly before D (i.e. <= D-1) - works
+        # for any number of target dates, unlike a positional .shift()
+        m = pd.merge_asof(tgt, src, on="date", direction="backward",
+                          allow_exact_matches=False)
+        out[f"{name}_ret1d"] = m[f"{name}_ret1d"].to_numpy()
+        out[f"{name}_ret5d"] = m[f"{name}_ret5d"].to_numpy()
 
     out = out.replace([np.inf, -np.inf], np.nan)
     log.info("global-cue features: %d cols over %d days", out.shape[1], len(out))

@@ -31,7 +31,9 @@ _OHLCV = ["open", "high", "low", "close", "volume"]
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
-def _recent_minute_bars(ticker: str, lookback: int = 40) -> pd.DataFrame:
+def _recent_minute_bars(ticker: str, lookback: int = 420) -> pd.DataFrame:
+    # grab the WHOLE day each poll (~375 bars) so a single successful run per day
+    # still yields complete 1-min coverage even if the cron gets throttled
     df = yf.Ticker(ticker).history(period="1d", interval="1m", auto_adjust=False)
     if df is None or df.empty:
         raise RuntimeError(f"no 1m data for {ticker}")
@@ -44,7 +46,7 @@ def _recent_minute_bars(ticker: str, lookback: int = 40) -> pd.DataFrame:
     return df
 
 
-def collect_tick(tickers: list[str] | None = None, lookback: int = 40) -> int:
+def collect_tick(tickers: list[str] | None = None, lookback: int = 420) -> int:
     """One poll: append recent completed 1-min bars for each ticker. Returns row count."""
     tickers = tickers or [CONFIG.instrument.yf_ticker, CONFIG.instrument.correlated_ticker]
     now = now_ist()

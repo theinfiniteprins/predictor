@@ -2,11 +2,11 @@
 
     python scripts/paper_log.py               # log newly-resolved entries + print summary
     python scripts/paper_log.py --summary     # summary only, no new logging
-    python scripts/paper_log.py --since 2026-09-01
+    python scripts/paper_log.py --rebuild     # wipe + re-log (after changing k / holdout)
 
-Run it whenever the laptop is on (after `git pull` for fresh collector data). It's
-incremental and append-only. Predictions are stamped with the model that made them;
-only out-of-sample calls count toward the headline precision.
+Run this BEFORE retraining, so the calls are logged against the model that was
+live when the entry resolved (that's what makes them out-of-sample). It's
+incremental and append-only. Only out-of-sample calls count toward the headline.
 """
 
 from __future__ import annotations
@@ -26,16 +26,21 @@ def main() -> None:
     ap.add_argument("--summary", action="store_true", help="print summary only")
     ap.add_argument("--since", default=None, help="only log entries on/after YYYY-MM-DD")
     ap.add_argument("--rebuild", action="store_true",
-                    help="wipe the log and re-log against the current model "
-                         "(do this after retraining with different k / holdout)")
+                    help="wipe the log and re-log against the current model")
+    ap.add_argument("--no-build", action="store_true",
+                    help="reuse the existing dataset.parquet (run.ps1 uses this)")
     args = ap.parse_args()
 
     CONFIG.paths.ensure()
     from predictor import papertrade
 
     if not args.summary:
-        since = dt.date.fromisoformat(args.since) if args.since else None
-        papertrade.run(since=since, rebuild=args.rebuild)
+        try:
+            since = dt.date.fromisoformat(args.since) if args.since else None
+            papertrade.run(since=since, rebuild=args.rebuild, build=not args.no_build)
+        except FileNotFoundError as exc:
+            log.warning("nothing to log yet: %s", exc)
+            return
 
     log.info("summary:\n%s", json.dumps(papertrade.summarize(), indent=2, default=str))
 

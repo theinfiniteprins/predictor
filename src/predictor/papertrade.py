@@ -24,6 +24,7 @@ import pandas as pd
 from .calendar import now_ist
 from .config import CONFIG
 from .dataset import build as build_dataset
+from .dataset import load as load_dataset
 from .logging_setup import get_logger
 from .models.meta import confidence_features
 from .models.persist import _CARD, load_bundle
@@ -43,12 +44,13 @@ def _load_log() -> pd.DataFrame:
     return pd.DataFrame()
 
 
-def run(since: dt.date | None = None, rebuild: bool = False) -> pd.DataFrame:
+def run(since: dt.date | None = None, rebuild: bool = False, build: bool = True) -> pd.DataFrame:
     """Log newly-resolved entries with the current model's call + real outcome.
 
     ``rebuild=True`` wipes the log and re-logs everything against the current model
     - use it after retraining with different settings (k, holdout). In normal use
     the log is append-only so it stays an honest record of live calls.
+    ``build=False`` reuses the existing dataset.parquet instead of rebuilding it.
     """
     if rebuild and _LOG.exists():
         _LOG.unlink()
@@ -58,7 +60,7 @@ def run(since: dt.date | None = None, rebuild: bool = False) -> pd.DataFrame:
     card = json.loads(_CARD.read_text(encoding="utf-8")) if _CARD.exists() else {}
     train_end = pd.Timestamp(card["train_data_end"]) if card.get("train_data_end") else None
 
-    ds = build_dataset()                       # refreshes unified history + labels + features
+    ds = build_dataset() if build else load_dataset()
     ds = ds[ds["label"].notna()].copy()
     resolved = ds[pd.to_datetime(ds["t_touch"]) < now_ist()]      # both tz-aware IST
     if since:

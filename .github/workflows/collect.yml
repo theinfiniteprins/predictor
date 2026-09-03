@@ -7,9 +7,10 @@ name: collect
 
 on:
   schedule:
-    # GitHub cron is UTC. NSE 09:15–15:30 IST == 03:45–10:00 UTC. Wide margin;
-    # the script itself no-ops outside market hours and on holidays.
-    - cron: "*/5 3-10 * * 1-5"
+    # GitHub cron is UTC. NSE 09:15–15:30 IST == 03:45–10:00 UTC. Each run now
+    # fetches the whole day's 1-min bars, so every 15 min is plenty and one
+    # run after close still captures the full session. Script no-ops off-hours.
+    - cron: "*/15 3-11 * * 1-5"
   workflow_dispatch:
     inputs:
       force:
