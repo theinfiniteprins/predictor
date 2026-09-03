@@ -25,6 +25,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="paper-trading log")
     ap.add_argument("--summary", action="store_true", help="print summary only")
     ap.add_argument("--since", default=None, help="only log entries on/after YYYY-MM-DD")
+    ap.add_argument("--rebuild", action="store_true",
+                    help="wipe the log and re-log against the current model "
+                         "(do this after retraining with different k / holdout)")
     args = ap.parse_args()
 
     CONFIG.paths.ensure()
@@ -32,7 +35,7 @@ def main() -> None:
 
     if not args.summary:
         since = dt.date.fromisoformat(args.since) if args.since else None
-        papertrade.run(since=since)
+        papertrade.run(since=since, rebuild=args.rebuild)
 
     log.info("summary:\n%s", json.dumps(papertrade.summarize(), indent=2, default=str))
 

@@ -43,7 +43,17 @@ def _load_log() -> pd.DataFrame:
     return pd.DataFrame()
 
 
-def run(since: dt.date | None = None) -> pd.DataFrame:
+def run(since: dt.date | None = None, rebuild: bool = False) -> pd.DataFrame:
+    """Log newly-resolved entries with the current model's call + real outcome.
+
+    ``rebuild=True`` wipes the log and re-logs everything against the current model
+    - use it after retraining with different settings (k, holdout). In normal use
+    the log is append-only so it stays an honest record of live calls.
+    """
+    if rebuild and _LOG.exists():
+        _LOG.unlink()
+        log.warning("paper log wiped (rebuild) - re-logging against the current model")
+
     bundle = load_bundle()
     card = json.loads(_CARD.read_text(encoding="utf-8")) if _CARD.exists() else {}
     train_end = pd.Timestamp(card["train_data_end"]) if card.get("train_data_end") else None

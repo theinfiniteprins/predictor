@@ -18,12 +18,15 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="walk-forward train + validate")
     ap.add_argument("--tune", type=int, default=0, metavar="N",
                     help="run N Optuna trials on the primary before fitting")
+    ap.add_argument("--holdout-days", type=int, default=0, metavar="D",
+                    help="train only through (last day - D); the rest becomes "
+                         "out-of-sample for paper_log (useful for a quick end-to-end test)")
     args = ap.parse_args()
 
     CONFIG.paths.ensure()
     from predictor.pipeline import train_and_validate
 
-    train_and_validate(n_trials=args.tune)
+    train_and_validate(n_trials=args.tune, holdout_days=args.holdout_days)
     log.info("done - see reports/cv/summary.json and models/model_card.json")
 
 

@@ -25,8 +25,13 @@ _CARRY = ["day", "t_touch", "entry_price", "sigma_effective", "k", "upper", "low
           "touch_price", "ret_at_touch", "reason"]
 
 
-def train_and_validate(n_trials: int = 0) -> pd.DataFrame:
+def train_and_validate(n_trials: int = 0, holdout_days: int = 0) -> pd.DataFrame:
     df = load_dataset()
+    if holdout_days:
+        cutoff = df["day"].max() - pd.Timedelta(days=holdout_days)
+        df = df[df["day"] <= cutoff]
+        log.info("holdout: training only through %s (%d rows) - the rest becomes "
+                 "out-of-sample for paper_log", cutoff.date(), len(df))
     X, y, t_entry, t_end = split_xy(df)
     cv = PurgedWalkForwardCV()
     n_folds = cv.get_n_splits(t_entry, t_end)
