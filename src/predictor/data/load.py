@@ -41,18 +41,22 @@ def _load_unified_or_raw(instrument: str, interval: str) -> pd.DataFrame:
     return _load("yfinance", f"{instrument}_{interval}")
 
 
-def load_intraday(interval: str | None = None, *, instrument: str = "NIFTY50") -> pd.DataFrame:
-    """5-min (or configured) OHLCV bars for the primary or correlated index."""
+def load_intraday(interval: str | None = None, *, instrument: str | None = None) -> pd.DataFrame:
+    """5-min (or configured) OHLCV bars for the active instrument (pass `instrument=`
+    explicitly, e.g. CONFIG.instrument.benchmark_key, to load a different one)."""
+    instrument = instrument or CONFIG.instrument.name
     return _load_unified_or_raw(instrument, interval or CONFIG.data.bar_interval)
 
 
-def load_fine(instrument: str = "NIFTY50") -> pd.DataFrame:
+def load_fine(instrument: str | None = None) -> pd.DataFrame:
     """1-min bars for intrabar barrier tie-breaking (yfinance ~7d + collector growth)."""
+    instrument = instrument or CONFIG.instrument.name
     return _load_unified_or_raw(instrument, CONFIG.data.fine_interval)
 
 
-def load_daily(instrument: str = "NIFTY50", *, prefer: str = "yfinance") -> pd.DataFrame:
+def load_daily(instrument: str | None = None, *, prefer: str = "yfinance") -> pd.DataFrame:
     """Daily OHLC, long history. ``prefer='nse'`` uses the jugaad-data bhavcopy pull."""
+    instrument = instrument or CONFIG.instrument.name
     if prefer == "nse":
         try:
             return _load("bhavcopy", f"{instrument}_1d_nse")

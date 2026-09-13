@@ -38,7 +38,12 @@ def evaluate(
     n_days: int | None = None,
 ) -> dict:
     if fired.empty:
-        return {"n_trades": 0}
+        return {
+            "n_trades": 0, "trades_per_day": 0.0, "directional_precision": np.nan,
+            "win_rate": np.nan, "avg_net_ret": np.nan, "median_net_ret": np.nan,
+            "total_net_ret": np.nan, "ret_std": np.nan, "per_trade_ir": np.nan,
+            "profit_factor": np.nan, "max_drawdown": 0.0, "hit_up": 0, "hit_down": 0,
+        }
 
     r = _trade_returns(fired, slippage_bps, cost_bps).to_numpy()
     correct = (fired["primary_pred"] == fired["label"]).to_numpy()

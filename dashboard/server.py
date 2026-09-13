@@ -30,6 +30,7 @@ stocks really can run at the same time; the same stock twice cannot.
 from __future__ import annotations
 
 import json
+import math
 import re
 import subprocess
 import sys
@@ -302,6 +303,95 @@ def _paper_trading_info(cfg) -> dict | None:
     return out
 
 
+def _market_day_summary(cfg, dates: list) -> dict:
+    """Per-day open/high/low/close from the unified intraday bars, for the plain
+    "what did the market actually do that day" context next to each prediction."""
+    path = cfg.paths.interim / f"{cfg.instrument.name}_{cfg.data.bar_interval}_unified.parquet"
+    if not path.exists() or not dates:
+        return {}
+    bars = pd.read_parquet(path)
+    bars.index = pd.to_datetime(bars.index)
+    out = {}
+    for d in dates:
+        day_bars = bars[bars.index.date == d]
+        if day_bars.empty:
+            continue
+        o = float(day_bars["open"].iloc[0])
+        c = float(day_bars["close"].iloc[-1])
+        out[str(d)] = {
+            "open": o, "close": c,
+            "high": float(day_bars["high"].max()),
+            "low": float(day_bars["low"].min()),
+            "change_pct": (c / o - 1.0) if o else None,
+        }
+    return out
+
+
+def _daily_detail(cfg, n_days: int = 5) -> dict:
+    """Day-by-day: what the tool predicted at each entry point that day, and what
+    actually happened - prefers the live paper-trading log (real calls the deployed
+    model made); falls back to the walk-forward OOF table (still genuinely held-out,
+    just not "live") for a stock that hasn't accumulated a paper-trading history yet.
+    """
+    pt_path = cfg.paths.reports_dir / "paper_trades.parquet"
+    oof_path = cfg.paths.reports_dir / "cv" / "oof.parquet"
+    df, source = None, None
+
+    if pt_path.exists():
+        pt = pd.read_parquet(pt_path)
+        if not pt.empty:
+            df = pt.reset_index().rename(columns={pt.index.name or "index": "t_entry"})
+            source = "paper_trades"
+
+    if df is None and oof_path.exists():
+        oof = pd.read_parquet(oof_path)
+        if not oof.empty:
+            df = oof.reset_index().rename(columns={oof.index.name or "index": "t_entry"})
+            source = "oof"
+            df["in_sample"] = False  # OOF is inherently held out within its own fold
+            card = _load_json(cfg.paths.models_dir / "model_card.json") or {}
+            thr = card.get("fire_threshold")
+            if thr is not None:
+                df["fired"] = (df["primary_pred"].fillna(0) != 0) & (df["meta_score"] >= thr)
+            else:
+                df["fired"] = False
+
+    if df is None or df.empty:
+        return {"source": "none", "days": []}
+
+    df["day"] = pd.to_datetime(df["day"]).dt.date
+    days_sorted = sorted(df["day"].unique(), reverse=True)[:n_days]
+    market = _market_day_summary(cfg, days_sorted)
+
+    def _int_or_none(v):
+        return int(v) if pd.notna(v) else None
+
+    def _float_or_none(v):
+        return float(v) if pd.notna(v) else None
+
+    out_days = []
+    for d in days_sorted:
+        day_rows = df[df["day"] == d].sort_values("t_entry")
+        entries = []
+        for _, row in day_rows.iterrows():
+            pred = _int_or_none(row.get("primary_pred"))
+            actual = _int_or_none(row.get("label"))
+            entries.append({
+                "time": pd.Timestamp(row["t_entry"]).strftime("%H:%M"),
+                "entry_price": _float_or_none(row.get("entry_price")),
+                "predicted": pred,
+                "meta_score": _float_or_none(row.get("meta_score")),
+                "fired": bool(row.get("fired")) if pd.notna(row.get("fired")) else False,
+                "actual": actual,
+                "correct": (pred == actual) if pred is not None and actual is not None else None,
+                "in_sample": bool(row.get("in_sample")) if pd.notna(row.get("in_sample")) else False,
+                "ret_at_touch": _float_or_none(row.get("ret_at_touch")),
+            })
+        out_days.append({"date": str(d), "market": market.get(str(d)), "entries": entries})
+
+    return {"source": source, "days": out_days}
+
+
 def _scheduled_task_info(instrument_key: str) -> dict:
     candidates = [f"PredictorDaily-{instrument_key}"]
     if instrument_key == "NIFTY50":
@@ -465,6 +555,21 @@ def register_instrument(payload: dict) -> dict:
 # HTTP plumbing
 # ---------------------------------------------------------------------------
 
+def _json_safe(obj):
+    """Recursively replace NaN/Infinity with None. Python's json module happily
+    emits the bareword ``NaN`` (it's valid Python float repr, invalid JSON), which
+    the browser's JSON.parse then rejects outright - silently breaking the entire
+    response, not just the one field. model_card.json / backtest.json can contain
+    NaN wherever a metric is undefined (e.g. zero fired calls to average over)."""
+    if isinstance(obj, float):
+        return None if (math.isnan(obj) or math.isinf(obj)) else obj
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(v) for v in obj]
+    return obj
+
+
 _MIME = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
          ".js": "application/javascript; charset=utf-8"}
 
@@ -476,7 +581,7 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def _send_json(self, payload, status: int = 200) -> None:
-        body = json.dumps(payload, default=str).encode("utf-8")
+        body = json.dumps(_json_safe(payload), default=str).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -516,6 +621,11 @@ class Handler(BaseHTTPRequestHandler):
         elif parsed.path == "/api/status":
             instrument = qs.get("instrument", ["NIFTY50"])[0]
             self._send_json(build_status(instrument))
+        elif parsed.path == "/api/daily_detail":
+            instrument = qs.get("instrument", ["NIFTY50"])[0]
+            n_days = max(5, int(qs.get("days", ["5"])[0]))
+            cfg = load_config(instrument=instrument)
+            self._send_json(_safe(lambda: _daily_detail(cfg, n_days), {"source": "none", "days": []}))
         elif parsed.path == "/api/run/output":
             instrument = qs.get("instrument", ["NIFTY50"])[0]
             since = int(qs.get("since", ["0"])[0])

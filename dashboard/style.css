@@ -295,6 +295,54 @@ main {
 
 details > summary { cursor: pointer; }
 
+.day-block {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 0.6rem;
+  overflow: hidden;
+}
+.day-block summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.9rem;
+  background: var(--gray-bg);
+  list-style: none;
+}
+.day-block summary::-webkit-details-marker { display: none; }
+.day-date { font-weight: 600; font-size: 0.9rem; }
+.day-move { font-size: 0.85rem; }
+.day-move.good { color: var(--green); }
+.day-move.warn { color: var(--red); }
+.day-move.neutral { color: var(--muted); }
+.day-stats { font-size: 0.8rem; margin-left: auto; }
+
+.day-table-wrap { overflow-x: auto; }
+.day-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.day-table th, .day-table td {
+  padding: 0.4rem 0.7rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.day-table th { color: var(--muted); font-weight: 600; font-size: 0.76rem; }
+.day-table tr.fired-row { background: var(--amber-bg); }
+.dir-up { color: var(--green); font-weight: 600; }
+.dir-down { color: var(--red); font-weight: 600; }
+.dir-flat { color: var(--muted); }
+.tag {
+  font-size: 0.72rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--gray-bg);
+  color: var(--muted);
+}
+
 .register-dialog {
   position: relative;
   width: min(480px, 92vw);

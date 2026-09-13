@@ -70,6 +70,7 @@
     $("console").textContent = "";
     $("console").hidden = true;
     fetchStatus();
+    loadDailyDetail();
   }
 
   $("stock-select").addEventListener("change", (e) => {
@@ -332,6 +333,89 @@
     el.textContent = (lines && lines.length) ? lines.join("\n") : "(no log file yet)";
   }
 
+  // ---- day-by-day detail -------------------------------------------------
+
+  function directionLabel(v) {
+    if (v === 1) return "UP";
+    if (v === -1) return "DOWN";
+    if (v === 0) return "No signal";
+    return "—";
+  }
+
+  function directionClass(v) {
+    if (v === 1) return "dir-up";
+    if (v === -1) return "dir-down";
+    return "dir-flat";
+  }
+
+  async function loadDailyDetail() {
+    const body = $("daily-detail-body");
+    const forInstrument = currentInstrument;
+    body.innerHTML = '<p class="muted loading">loading…</p>';
+    try {
+      const res = await fetch(`/api/daily_detail?instrument=${encodeURIComponent(forInstrument)}&days=5`);
+      const data = await res.json();
+      if (forInstrument !== currentInstrument) return; // stock switched while this was in flight
+      renderDailyDetail(data);
+    } catch (e) {
+      body.innerHTML = '<p class="muted">Could not load day-by-day detail.</p>';
+    }
+  }
+
+  function renderDailyDetail(data) {
+    const body = $("daily-detail-body");
+    const note = $("daily-source-note");
+    if (!data.days || !data.days.length) {
+      note.textContent = "";
+      body.innerHTML = `<p class="muted">Nothing recorded yet for this stock — run the predictor
+        at least once (and let a model train) to start building day-by-day history.</p>`;
+      return;
+    }
+    note.textContent = data.source === "paper_trades"
+      ? "(from the live paper-trading log)"
+      : "(from walk-forward cross-validation — the paper-trading log hasn't built up yet)";
+
+    body.innerHTML = data.days.map((day, i) => {
+      const m = day.market;
+      const moveTone = m && m.change_pct != null ? (m.change_pct >= 0 ? "good" : "warn") : "neutral";
+      const moveText = m && m.change_pct != null
+        ? `${m.change_pct >= 0 ? "🟢 +" : "🔴 "}${(m.change_pct * 100).toFixed(2)}%  (${m.open.toFixed(2)} → ${m.close.toFixed(2)})`
+        : "price data unavailable";
+      const fired = day.entries.filter((e) => e.fired);
+      const correctFired = fired.filter((e) => e.correct).length;
+      const summaryStats = `${day.entries.length} check-ins · ${fired.length} acted on` +
+        (fired.length ? ` (${correctFired}/${fired.length} correct)` : "");
+
+      const rows = day.entries.map((e) => `
+        <tr class="${e.fired ? "fired-row" : ""}">
+          <td>${e.time}</td>
+          <td>${e.entry_price != null ? e.entry_price.toFixed(2) : "—"}</td>
+          <td class="${directionClass(e.predicted)}">${directionLabel(e.predicted)}</td>
+          <td>${e.meta_score != null ? (e.meta_score * 100).toFixed(1) + "%" : "—"}</td>
+          <td>${e.fired ? "🔔 acted" : "watched only"}</td>
+          <td class="${directionClass(e.actual)}">${directionLabel(e.actual)}</td>
+          <td>${e.correct === null ? "—" : e.correct ? "✓" : "✗"}</td>
+          <td>${e.in_sample ? '<span class="tag">training data</span>' : ""}</td>
+        </tr>`).join("");
+
+      return `
+        <details class="day-block"${i === 0 ? " open" : ""}>
+          <summary>
+            <span class="day-date">${day.date}</span>
+            <span class="day-move ${moveTone}">${moveText}</span>
+            <span class="day-stats muted">${summaryStats}</span>
+          </summary>
+          <div class="day-table-wrap">
+            <table class="day-table">
+              <thead><tr><th>Time</th><th>Price</th><th>Predicted</th><th>Confidence</th>
+                <th>Action</th><th>Actual</th><th>Correct?</th><th></th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </details>`;
+    }).join("");
+  }
+
   // ---- run console ---------------------------------------------------------
 
   function renderStages(run) {
@@ -407,6 +491,7 @@
         if (!run.running) {
           stopRunPoll();
           fetchStatus();
+          loadDailyDetail();
         }
       } catch (e) { /* transient - retry next tick */ }
     }, 1000);
@@ -473,11 +558,12 @@
 
   $("run-btn").addEventListener("click", triggerRun);
   $("stop-btn").addEventListener("click", stopRun);
-  $("refresh-btn").addEventListener("click", fetchStatus);
+  $("refresh-btn").addEventListener("click", () => { fetchStatus(); loadDailyDetail(); });
 
   (async () => {
     await loadInstruments();
     fetchStatus();
+    loadDailyDetail();
   })();
   statusTimer = setInterval(() => { if (!pollTimer) fetchStatus(); }, 20000);
   setInterval(() => { $("clock").textContent = new Date().toLocaleTimeString(); }, 1000);
