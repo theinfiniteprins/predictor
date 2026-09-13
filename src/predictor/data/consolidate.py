@@ -22,7 +22,6 @@ from .load import load_collected_bars
 log = get_logger("consolidate")
 
 _OHLCV = ["open", "high", "low", "close", "volume"]
-_INSTRUMENTS = {"NIFTY50": "^NSEI", "BANKNIFTY": "^NSEBANK"}
 
 
 def _ns(df: pd.DataFrame) -> pd.DataFrame:
@@ -55,8 +54,7 @@ def _prev_unified(instrument: str, interval: str) -> pd.DataFrame:
     return _read_ohlcv(CONFIG.paths.interim / f"{instrument}_{interval}_unified.parquet")
 
 
-def consolidate(instrument: str = "NIFTY50", ticker: str | None = None) -> dict:
-    ticker = ticker or _INSTRUMENTS.get(instrument, CONFIG.instrument.yf_ticker)
+def consolidate(instrument: str, ticker: str) -> dict:
     col = load_collected_bars(ticker=ticker)
     col1 = pd.DataFrame(columns=_OHLCV)
     if not col.empty:
@@ -90,10 +88,13 @@ def consolidate(instrument: str = "NIFTY50", ticker: str | None = None) -> dict:
 
 
 def consolidate_all() -> dict:
+    """Consolidate the active instrument + its benchmark (see instruments.yaml)."""
+    inst = CONFIG.instrument
+    pairs = [(inst.name, inst.yf_ticker), (inst.benchmark_key, inst.benchmark_ticker)]
     res = {}
-    for inst, tkr in _INSTRUMENTS.items():
+    for key, tkr in pairs:
         try:
-            res[inst] = consolidate(inst, tkr)
+            res[key] = consolidate(key, tkr)
         except Exception as exc:  # noqa: BLE001
-            log.warning("consolidate(%s) failed: %s", inst, exc)
+            log.warning("consolidate(%s) failed: %s", key, exc)
     return res

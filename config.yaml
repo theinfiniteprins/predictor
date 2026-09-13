@@ -1,11 +1,9 @@
-# Single source of truth for Phase 0 parameters.
+# Single source of truth for Phase 0 parameters, SHARED across every instrument.
 # Phase 6 sweeps (k, confidence threshold, embargo) are edits to THIS file, not code.
-
-instrument:
-  name: NIFTY50
-  yf_ticker: "^NSEI"
-  option_symbol: NIFTY          # nsepython index option-chain symbol
-  correlated_ticker: "^NSEBANK" # Bank Nifty, for divergence feature (Phase 2)
+#
+# Per-instrument settings (which stock, its ticker, its benchmark) now live in
+# instruments.yaml at the repo root - selected via the PREDICTOR_INSTRUMENT env var
+# (or --instrument on the CLI scripts), not here.
 
 session:                        # IST, NSE equity/index segment
   timezone: "Asia/Kolkata"

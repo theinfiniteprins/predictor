@@ -15,6 +15,9 @@ from __future__ import annotations
 
 import argparse
 
+from predictor.cli import resolve_instrument
+resolve_instrument()
+
 from predictor.config import CONFIG
 from predictor.logging_setup import get_logger
 
@@ -25,6 +28,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Track B live collector")
     ap.add_argument("--no-options", action="store_true", help="quotes only, no option snapshots")
     ap.add_argument("--once", action="store_true", help="single poll then exit")
+    ap.add_argument("--instrument", default=None, help="instrument key from instruments.yaml "
+                     "(single-instrument only - the cloud collector handles every stock)")
     args = ap.parse_args()
 
     CONFIG.paths.ensure()

@@ -11,6 +11,9 @@ import json
 
 import pandas as pd
 
+from predictor.cli import resolve_instrument
+resolve_instrument()
+
 from predictor.config import CONFIG
 from predictor.logging_setup import get_logger
 
@@ -22,6 +25,7 @@ def main() -> None:
     ap.add_argument("--slippage-bps", type=float, default=1.5, help="per side")
     ap.add_argument("--cost-bps", type=float, default=0.0, help="brokerage/STT per round trip")
     ap.add_argument("--top-fraction", type=float, default=None, help="override fire fraction")
+    ap.add_argument("--instrument", default=None, help="instrument key from instruments.yaml")
     args = ap.parse_args()
 
     oof_path = CONFIG.paths.reports_dir / "cv" / "oof.parquet"

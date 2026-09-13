@@ -2,8 +2,10 @@
   One command for the whole daily flow. Run from anywhere:
 
       D:\Predictor\run.ps1
+      D:\Predictor\run.ps1 -Instrument LAURUSLABS
 
   Options:
+      -Instrument KEY  which instrument to run (default NIFTY50; see instruments.yaml)
       -Tune 200        run an Optuna hyperparameter search (slow; do occasionally)
       -K 0.6           override the barrier multiplier for this run
       -Holdout 14      train only through (last day - 14) so the tail is out-of-sample
@@ -13,8 +15,13 @@
   What it does, in order:
       git pull  ->  refresh raw data  ->  build dataset  ->  paper-log yesterday's
       calls (before retraining)  ->  retrain  ->  backtest  ->  print the report
+
+  Every step below runs as its own python.exe process; setting PREDICTOR_INSTRUMENT
+  once here is enough for all of them to pick it up (predictor/config.py resolves
+  paths from it at import time) - see instruments.yaml for what's registered.
 #>
 param(
+    [string]$Instrument = "NIFTY50",
     [int]$Tune = 0,
     [double]$K = 0,
     [int]$Holdout = 0,
@@ -26,6 +33,7 @@ $ErrorActionPreference = "Continue"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $root
 $py = Join-Path $root ".venv\Scripts\python.exe"
+$env:PREDICTOR_INSTRUMENT = $Instrument
 
 if (-not (Test-Path $py)) {
     Write-Host "venv missing. First-time setup:" -ForegroundColor Red
@@ -43,6 +51,7 @@ function Step($name, [scriptblock]$block) {
 }
 
 $started = Get-Date
+Write-Host "instrument: $Instrument" -ForegroundColor DarkGray
 
 if (-not $SkipPull)     { Step "git pull (collector data)" { git pull --rebase --autostash } }
 if (-not $SkipBackfill) { Step "refresh raw data"          { & $py scripts\run_backfill.py --all } }

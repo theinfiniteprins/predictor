@@ -15,6 +15,9 @@ import argparse
 import datetime as dt
 import json
 
+from predictor.cli import resolve_instrument
+resolve_instrument()
+
 from predictor.config import CONFIG
 from predictor.logging_setup import get_logger
 
@@ -29,6 +32,7 @@ def main() -> None:
                     help="wipe the log and re-log against the current model")
     ap.add_argument("--no-build", action="store_true",
                     help="reuse the existing dataset.parquet (run.ps1 uses this)")
+    ap.add_argument("--instrument", default=None, help="instrument key from instruments.yaml")
     args = ap.parse_args()
 
     CONFIG.paths.ensure()

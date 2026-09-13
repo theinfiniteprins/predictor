@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import argparse
 
+from predictor.cli import resolve_instrument
+resolve_instrument()
+
 from predictor.config import CONFIG
 from predictor.logging_setup import get_logger
 
@@ -17,6 +20,7 @@ log = get_logger("build_dataset")
 def main() -> None:
     ap = argparse.ArgumentParser(description="build features + labels")
     ap.add_argument("--k", type=float, default=None, help="barrier multiplier (default: config)")
+    ap.add_argument("--instrument", default=None, help="instrument key from instruments.yaml")
     args = ap.parse_args()
 
     CONFIG.paths.ensure()

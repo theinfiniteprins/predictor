@@ -48,7 +48,7 @@ def _recent_minute_bars(ticker: str, lookback: int = 420) -> pd.DataFrame:
 
 def collect_tick(tickers: list[str] | None = None, lookback: int = 420) -> int:
     """One poll: append recent completed 1-min bars for each ticker. Returns row count."""
-    tickers = tickers or [CONFIG.instrument.yf_ticker, CONFIG.instrument.correlated_ticker]
+    tickers = tickers or [CONFIG.instrument.yf_ticker, CONFIG.instrument.benchmark_ticker]
     now = now_ist()
     frames: list[pd.DataFrame] = []
     for t in tickers:

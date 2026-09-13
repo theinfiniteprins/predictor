@@ -1,9 +1,14 @@
 name: collect
 
-# Cloud Track-B collector. Polls ^NSEI + ^NSEBANK every ~5 min during NSE market
+# Cloud Track-B collector. Polls every instrument registered in instruments.yaml
+# (deduplicated tickers, including shared benchmarks) every ~15 min during NSE market
 # hours and commits one parquet/day under collected/. Runs regardless of whether
 # the laptop is on. NSE-direct data (option chain / PCR / FII-DII) is NOT collected
 # here — datacenter IPs are blocked; that stays a laptop catch-up job.
+#
+# Registering a new stock (via the dashboard, or by hand) only ever edits
+# instruments.yaml - this workflow never changes, so there's exactly one process
+# ever pushing collector data and no risk of concurrent-job merge conflicts.
 
 on:
   schedule:
@@ -45,7 +50,7 @@ jobs:
       - name: Poll
         env:
           PREDICTOR_LIVE_ROOT: collected
-        run: python scripts/collect_tick.py ${{ inputs.force && '--force' || '' }}
+        run: python scripts/collect_all.py ${{ inputs.force && '--force' || '' }}
 
       - name: Commit new ticks
         run: |

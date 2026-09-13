@@ -31,10 +31,10 @@ def test_features_ignore_future_bars(synthetic_bars):
     cut_day = days[4]
     cut = pd.Timestamp(dt.datetime.combine(cut_day, dt.time(11, 0)), tz=IST)
 
-    full = build_features(bars=bars, banknifty=None, days=days)
+    full = build_features(bars=bars, benchmark=None, days=days)
 
     truncated_bars = bars[bars.index < cut]
-    trunc = build_features(bars=truncated_bars, banknifty=None,
+    trunc = build_features(bars=truncated_bars, benchmark=None,
                            days=sorted({ts.date() for ts in truncated_bars.index}))
 
     common = full.index.intersection(trunc.index)

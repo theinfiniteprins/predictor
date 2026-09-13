@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import argparse
 
+from predictor.cli import resolve_instrument
+resolve_instrument()
+
 from predictor.config import CONFIG
 from predictor.logging_setup import get_logger
 
@@ -21,6 +24,7 @@ def main() -> None:
     ap.add_argument("--holdout-days", type=int, default=0, metavar="D",
                     help="train only through (last day - D); the rest becomes "
                          "out-of-sample for paper_log (useful for a quick end-to-end test)")
+    ap.add_argument("--instrument", default=None, help="instrument key from instruments.yaml")
     args = ap.parse_args()
 
     CONFIG.paths.ensure()

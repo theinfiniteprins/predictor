@@ -1,6 +1,7 @@
 """NSE trading calendar: trading-day checks, session bounds, entry-point grid.
 
-Holidays are loaded from ``data/reference/nse_holidays.json`` (refresh it with
+Holidays are loaded from ``data/_shared/reference/nse_holidays.json`` (shared across
+every instrument - refresh it with
 ``python scripts/refresh_calendar.py``). If that file is missing we fall back to a
 hardcoded list and log a warning — good enough for the Track B collector, but
 Phase 3 labeling should always run against a freshly refreshed list.
@@ -34,7 +35,7 @@ _FALLBACK_HOLIDAYS: set[str] = {
     "2026-12-25",
 }
 
-_HOLIDAY_FILE = CONFIG.paths.data_dir / "reference" / "nse_holidays.json"
+_HOLIDAY_FILE = CONFIG.paths.reference / "nse_holidays.json"
 
 
 def load_holidays() -> set[dt.date]:

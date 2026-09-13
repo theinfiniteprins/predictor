@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nifty Predictor — Control Panel</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-title">
+      <span class="dot" id="heartbeat-dot"></span>
+      <h1 id="stock-heading">Predictor</h1>
+      <span class="subtitle">Control Panel</span>
+    </div>
+    <div class="topbar-meta">
+      <select id="stock-select" class="stock-select"><option>loading…</option></select>
+      <span id="market-badge" class="badge">checking market…</span>
+      <span id="clock" class="clock">—</span>
+    </div>
+  </header>
+
+  <dialog id="register-dialog" class="register-dialog">
+    <h2>Register a new stock</h2>
+    <p class="muted">
+      Search NSE's official listing by company name, pick the right one, and the
+      dashboard validates it has real market data, saves it, and starts the cloud
+      collector on it — pushed straight to your GitHub repo automatically.
+    </p>
+    <input id="reg-search" type="text" placeholder="e.g. Laurus Labs" autocomplete="off" />
+    <ul id="reg-results" class="reg-results"></ul>
+    <div id="reg-selected" class="reg-selected" hidden>
+      <div class="reg-selected-row">
+        <strong id="reg-selected-name"></strong>
+        <span id="reg-selected-symbol" class="muted"></span>
+      </div>
+      <label class="reg-benchmark-row">Benchmark for the divergence features
+        <select id="reg-benchmark"></select>
+      </label>
+      <label class="reg-push-row"><input type="checkbox" id="reg-push" checked />
+        Push to GitHub automatically (so the cloud collector starts on it right away)</label>
+      <div class="reg-actions">
+        <button id="reg-confirm" class="btn btn-primary">Register</button>
+        <button id="reg-cancel" class="btn btn-ghost">Cancel</button>
+      </div>
+    </div>
+    <pre id="reg-log" class="console small" hidden></pre>
+    <button id="reg-close" class="btn btn-ghost reg-close-x" aria-label="Close">✕</button>
+  </dialog>
+
+  <main>
+    <section class="panel run-panel">
+      <div class="run-panel-top">
+        <div>
+          <h2>Run the predictor</h2>
+          <p class="muted">
+            This does everything for the day in one go: grab any new market data,
+            rebuild today's dataset, check yesterday's calls, retrain the model,
+            and print a fresh report. Takes about a minute.
+          </p>
+        </div>
+        <div class="run-actions">
+          <button id="run-btn" class="btn btn-primary btn-big">▶ Run Predictor Now</button>
+          <button id="stop-btn" class="btn btn-danger" hidden>■ Stop</button>
+        </div>
+      </div>
+
+      <p id="run-status-line" class="run-status-line muted">Not run from here yet this session.</p>
+
+      <details class="advanced">
+        <summary>Advanced options</summary>
+        <div class="advanced-grid">
+          <label><input type="checkbox" id="opt-skip-pull" /> Skip downloading collected data (git pull)</label>
+          <label><input type="checkbox" id="opt-skip-backfill" /> Skip re-fetching market data (use what's already local)</label>
+          <label>Hyperparameter search rounds
+            <input type="number" id="opt-tune" min="0" step="1" placeholder="0 = off" />
+          </label>
+          <label>Barrier multiplier (k) override
+            <input type="number" id="opt-k" min="0" step="0.1" placeholder="default from config" />
+          </label>
+          <label>Hold out last N days as test-only
+            <input type="number" id="opt-holdout" min="0" step="1" placeholder="0 = off" />
+          </label>
+        </div>
+      </details>
+
+      <ol id="stage-list" class="stage-list" hidden></ol>
+
+      <pre id="console" class="console" hidden></pre>
+    </section>
+
+    <section class="grid">
+      <article class="panel card" id="card-collector">
+        <h3>📡 Data being collected</h3>
+        <div class="card-body loading">loading…</div>
+      </article>
+
+      <article class="panel card" id="card-dataset">
+        <h3>🧮 Training dataset</h3>
+        <div class="card-body loading">loading…</div>
+      </article>
+
+      <article class="panel card" id="card-model">
+        <h3>🧠 Model</h3>
+        <div class="card-body loading">loading…</div>
+      </article>
+
+      <article class="panel card" id="card-backtest">
+        <h3>📊 Backtest (simulated trading)</h3>
+        <div class="card-body loading">loading…</div>
+      </article>
+
+      <article class="panel card" id="card-paper">
+        <h3>📝 Paper trading (real-world, no money)</h3>
+        <div class="card-body loading">loading…</div>
+      </article>
+
+      <article class="panel card" id="card-schedule">
+        <h3>⏰ Automatic daily run</h3>
+        <div class="card-body loading">loading…</div>
+      </article>
+    </section>
+
+    <section class="panel">
+      <details>
+        <summary><strong>Recent activity log</strong> <span class="muted">(technical detail, for troubleshooting)</span></summary>
+        <pre id="log-tail" class="console small"></pre>
+      </details>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>Files: <code id="root-path">D:\Predictor</code></span>
+    <button id="refresh-btn" class="btn btn-ghost">⟳ Refresh</button>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>

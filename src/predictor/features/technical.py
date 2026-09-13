@@ -77,35 +77,35 @@ def _continuous(bars: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _cross_asset(bars: pd.DataFrame, bn: pd.DataFrame | None) -> pd.DataFrame:
+def _cross_asset(bars: pd.DataFrame, bench: pd.DataFrame | None) -> pd.DataFrame:
     out = pd.DataFrame(index=bars.index)
-    if bn is None or bn.empty:
-        for c in ("bn_divergence_open", "bn_divergence_6b", "bn_corr_24b"):
+    if bench is None or bench.empty:
+        for c in ("bench_divergence_open", "bench_divergence_6b", "bench_corr_24b"):
             out[c] = np.nan
         return out
 
-    bn = bn.reindex(bars.index).ffill(limit=2)
+    bench = bench.reindex(bars.index).ffill(limit=2)
     g_n = bars.groupby(bars.index.date, group_keys=False)
-    g_b = bn.groupby(bn.index.date, group_keys=False)
+    g_b = bench.groupby(bench.index.date, group_keys=False)
 
     n_open_ret = bars["close"] / g_n["open"].transform("first") - 1.0
-    b_open_ret = bn["close"] / g_b["open"].transform("first") - 1.0
-    out["bn_divergence_open"] = b_open_ret - n_open_ret
+    b_open_ret = bench["close"] / g_b["open"].transform("first") - 1.0
+    out["bench_divergence_open"] = b_open_ret - n_open_ret
 
-    out["bn_divergence_6b"] = (
-        ind.rolling_return(bn["close"], 6) - ind.rolling_return(bars["close"], 6)
+    out["bench_divergence_6b"] = (
+        ind.rolling_return(bench["close"], 6) - ind.rolling_return(bars["close"], 6)
     )
     n_lr = np.log(bars["close"]).diff()
-    b_lr = np.log(bn["close"]).diff()
-    out["bn_corr_24b"] = n_lr.rolling(24, min_periods=12).corr(b_lr)
+    b_lr = np.log(bench["close"]).diff()
+    out["bench_corr_24b"] = n_lr.rolling(24, min_periods=12).corr(b_lr)
     return out
 
 
 def technical_features(
-    bars: pd.DataFrame, banknifty: pd.DataFrame | None = None
+    bars: pd.DataFrame, benchmark: pd.DataFrame | None = None
 ) -> pd.DataFrame:
     feats = pd.concat(
-        [_continuous(bars), _session_anchored(bars), _cross_asset(bars, banknifty)],
+        [_continuous(bars), _session_anchored(bars), _cross_asset(bars, benchmark)],
         axis=1,
     )
     feats = feats.replace([np.inf, -np.inf], np.nan)

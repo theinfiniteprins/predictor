@@ -11,6 +11,9 @@ import json
 
 import pandas as pd
 
+from predictor.cli import resolve_instrument
+resolve_instrument()
+
 from predictor.config import CONFIG
 
 pd.set_option("display.width", 200, "display.max_columns", 40, "display.max_rows", 60)
@@ -27,8 +30,10 @@ def _hr(title: str) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--signals", action="store_true", help="list recent directional / fired calls")
+    ap.add_argument("--instrument", default=None, help="instrument key from instruments.yaml")
     args = ap.parse_args()
     p = CONFIG.paths
+    print(f"instrument: {CONFIG.instrument.display_name} ({CONFIG.instrument.name})")
 
     _hr("DATASET")
     meta = _load_json(p.processed / "dataset_meta.json")

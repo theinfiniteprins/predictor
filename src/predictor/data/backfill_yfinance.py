@@ -65,7 +65,7 @@ def fetch_daily(ticker: str, period: str | None = None) -> pd.DataFrame:
 
 
 def backfill_instrument() -> dict[str, int]:
-    """Pull the primary instrument + correlated index at every interval we use."""
+    """Pull the primary instrument + its benchmark at every interval we use."""
     inst = CONFIG.instrument
     d = CONFIG.data
     out: dict[str, int] = {}
@@ -74,8 +74,8 @@ def backfill_instrument() -> dict[str, int]:
         ("yfinance", f"{inst.name}_{d.bar_interval}", inst.yf_ticker, d.bar_interval, d.backfill_period),
         ("yfinance", f"{inst.name}_{d.fine_interval}", inst.yf_ticker, d.fine_interval, "7d"),
         ("yfinance", f"{inst.name}_1d", inst.yf_ticker, "1d", d.daily_period),
-        ("yfinance", f"BANKNIFTY_{d.bar_interval}", inst.correlated_ticker, d.bar_interval, d.backfill_period),
-        ("yfinance", "BANKNIFTY_1d", inst.correlated_ticker, "1d", d.daily_period),
+        ("yfinance", f"{inst.benchmark_key}_{d.bar_interval}", inst.benchmark_ticker, d.bar_interval, d.backfill_period),
+        ("yfinance", f"{inst.benchmark_key}_1d", inst.benchmark_ticker, "1d", d.daily_period),
     ]
     for source, name, ticker, interval, period in jobs:
         try:

@@ -32,6 +32,9 @@ def _option_chain_raw(symbol: str) -> dict:
 
 def fetch_option_chain_snapshot(symbol: str | None = None) -> dict:
     symbol = symbol or CONFIG.instrument.option_symbol
+    if not symbol:
+        log.info("no option-chain symbol configured for %s - skipping", CONFIG.instrument.name)
+        return {}
     try:
         data = _option_chain_raw(symbol)
     except Exception as exc:  # noqa: BLE001

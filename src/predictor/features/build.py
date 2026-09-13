@@ -15,6 +15,7 @@ import datetime as dt
 
 import pandas as pd
 
+from ..config import CONFIG
 from ..data.load import load_daily, load_intraday
 from ..logging_setup import get_logger
 from ..calendar import entry_points
@@ -38,15 +39,15 @@ def _entry_index(bars: pd.DataFrame, days: list[dt.date]) -> pd.DatetimeIndex:
 
 def build_features(
     bars: pd.DataFrame | None = None,
-    banknifty: pd.DataFrame | None = None,
+    benchmark: pd.DataFrame | None = None,
     days: list[dt.date] | None = None,
 ) -> pd.DataFrame:
     bars = load_intraday() if bars is None else bars
-    if banknifty is None:
+    if benchmark is None:
         try:
-            banknifty = load_intraday(instrument="BANKNIFTY")
+            benchmark = load_intraday(instrument=CONFIG.instrument.benchmark_key)
         except FileNotFoundError:
-            banknifty = None
+            benchmark = None
     days = days or sorted({ts.date() for ts in bars.index})
 
     entry_idx = _entry_index(bars, days)
@@ -55,7 +56,7 @@ def build_features(
     entries["day"] = entries["t_entry"].dt.tz_localize(None).dt.normalize()
 
     # --- intraday technical: strictly-before-T asof join ---
-    tech = technical_features(bars, banknifty).reset_index()
+    tech = technical_features(bars, benchmark).reset_index()
     tech = tech.rename(columns={tech.columns[0]: "bar_ts"}).sort_values("bar_ts")
     tech["bar_ts"] = tech["bar_ts"].dt.as_unit("ns")
     feat = pd.merge_asof(

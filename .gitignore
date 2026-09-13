@@ -5,15 +5,13 @@ __pycache__/
 .pytest_cache/
 .ipynb_checkpoints/
 
-# local data lake + artifacts — regenerable / large / grows daily.
+# local data lake + artifacts — regenerable / large / grows daily, now namespaced
+# per instrument (data/<key>/, models/<key>/, reports/<key>/, logs/<key>/).
 # Anchored with a leading slash so they only match at the repo root and DON'T
 # swallow src/predictor/data/ or src/predictor/models/.
 /data/
 /models/
 /logs/
-/reports/cv/
-/reports/*.csv
-/reports/*.json
-/reports/*.parquet
+/reports/*
 
-!reports/.gitkeep
+!/reports/.gitkeep

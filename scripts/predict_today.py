@@ -4,7 +4,7 @@
     python scripts/predict_today.py --at 11:15    # a specific entry point today
     python scripts/predict_today.py --date 2026-08-27 --at 13:30
 
-Needs today's intraday bars present: run `python scripts/run_backfill.py --instrument`
+Needs today's intraday bars present: run `python scripts/run_backfill.py --bars`
 first (or wire in the collector store).
 """
 
@@ -15,6 +15,9 @@ import datetime as dt
 
 import numpy as np
 import pandas as pd
+
+from predictor.cli import resolve_instrument
+resolve_instrument()
 
 from predictor.calendar import IST, now_ist
 from predictor.config import CONFIG
@@ -27,6 +30,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="live prediction for one entry point")
     ap.add_argument("--date", default=None, help="YYYY-MM-DD (default: today IST)")
     ap.add_argument("--at", default=None, help="HH:MM entry point (default: most recent)")
+    ap.add_argument("--instrument", default=None, help="instrument key from instruments.yaml")
     args = ap.parse_args()
 
     from predictor.features.build import build_features
