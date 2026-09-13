@@ -1,0 +1,30 @@
+# Registry of every instrument the predictor tracks. This is the single source of
+# truth read by both the cloud collector (.github/workflows/collect.yml ->
+# scripts/collect_all.py) and the dashboard - registering a stock through the
+# dashboard appends an entry here and pushes it, nothing else needs to change.
+#
+# Fields:
+#   key              machine id, used for file/folder naming (data/<key>/, models/<key>/, ...)
+#   display_name     human-readable label shown in the dashboard
+#   yf_ticker        yfinance ticker this instrument's own bars are pulled from
+#   benchmark_key    another instrument key used for the cross-asset "divergence" features
+#                    (defaults to NIFTY50 for any new equity; NIFTY50 itself uses Bank Nifty)
+#   benchmark_ticker yfinance ticker for the benchmark
+#   option_symbol    NSE option-chain symbol, or null if this instrument has no listed F&O
+#   added_at         when it was registered (informational only)
+
+instruments:
+  - key: NIFTY50
+    display_name: "Nifty 50"
+    yf_ticker: "^NSEI"
+    benchmark_key: BANKNIFTY
+    benchmark_ticker: "^NSEBANK"
+    option_symbol: NIFTY
+    added_at: "2026-08-28"
+  - key: LAURUSLABS
+    display_name: Laurus Labs Limited
+    yf_ticker: LAURUSLABS.NS
+    benchmark_key: NIFTY50
+    benchmark_ticker: ^NSEI
+    option_symbol: null
+    added_at: '2026-09-13'
