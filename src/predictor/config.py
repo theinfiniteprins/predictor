@@ -95,6 +95,11 @@ class CVConfig:
 @dataclass(frozen=True)
 class MetaConfig:
     fire_top_fraction: float
+    require_proven_edge: bool = True
+    min_fire_trades: int = 30
+    min_fire_days: int = 15
+    bootstrap_samples: int = 2000
+    significance_alpha: float = 0.05
 
 
 @dataclass(frozen=True)
@@ -259,7 +264,14 @@ def _build_config(path: str | Path | None, inst_key: str) -> Config:
             test_window_days=int(cv["test_window_days"]),
             step_days=int(cv["step_days"]),
         ),
-        meta=MetaConfig(fire_top_fraction=float(raw["meta"]["fire_top_fraction"])),
+        meta=MetaConfig(
+            fire_top_fraction=float(raw["meta"]["fire_top_fraction"]),
+            require_proven_edge=bool(raw["meta"].get("require_proven_edge", True)),
+            min_fire_trades=int(raw["meta"].get("min_fire_trades", 30)),
+            min_fire_days=int(raw["meta"].get("min_fire_days", 15)),
+            bootstrap_samples=int(raw["meta"].get("bootstrap_samples", 2000)),
+            significance_alpha=float(raw["meta"].get("significance_alpha", 0.05)),
+        ),
         paths=paths,
         raw=raw,
     )

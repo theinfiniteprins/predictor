@@ -37,7 +37,7 @@ def main() -> None:
     from predictor.labeling.entry_points import current_entry_point
     from predictor.models.meta import confidence_features
     from predictor.models.persist import load_bundle
-    from predictor.models.primary import PROBA_COLS, _LABELS
+    from predictor.models.primary import PROBA_COLS, _LABELS, predict_proba as primary_proba
 
     day = dt.date.fromisoformat(args.date) if args.date else now_ist().date()
     if args.at:
@@ -54,7 +54,7 @@ def main() -> None:
         log.info("no feature row for %s (missing bar / before first entry)", entry_ts); return
 
     row = feats.loc[[entry_ts]].reindex(columns=bundle["feature_columns"])
-    proba = bundle["primary"].predict_proba(row.to_numpy(dtype="float64", na_value=np.nan))[0]
+    proba = primary_proba(bundle, row.to_numpy(dtype="float64", na_value=np.nan))[0]
     pred = int(_LABELS[int(np.argmax(proba))])
     pdict = {c: round(float(p), 3) for c, p in zip(PROBA_COLS, proba)}
 

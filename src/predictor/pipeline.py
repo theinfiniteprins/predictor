@@ -18,6 +18,7 @@ from .models.primary import fit_final, fit_walk_forward
 from .models.tune import tune_primary
 from .validation.metrics import summarize
 from .validation.purged_cv import PurgedWalkForwardCV
+from .validation.significance import choose_fire_threshold, edge_report
 
 log = get_logger("pipeline")
 
@@ -42,7 +43,8 @@ def train_and_validate(n_trials: int = 0, holdout_days: int = 0) -> pd.DataFrame
     params = {}
     if n_trials:
         log.info("tuning primary over %d trials ...", n_trials)
-        params = tune_primary(X, y, t_entry, t_end, n_trials=n_trials, cv=cv)
+        params = tune_primary(X, y, t_entry, t_end, n_trials=n_trials, cv=cv,
+                              days=df["day"], n_boot=max(200, CONFIG.meta.bootstrap_samples // 5))
 
     primary = fit_walk_forward(X, y, t_entry, t_end, cv=cv, params=params)
     meta_score = fit_walk_forward_meta(X, y, primary.oof, t_entry, t_end, cv=cv)
@@ -58,6 +60,14 @@ def train_and_validate(n_trials: int = 0, holdout_days: int = 0) -> pd.DataFrame
     log.info("OOF high-confidence (top %.0f%%): %s",
              100 * CONFIG.meta.fire_top_fraction, summary["high_confidence"])
 
+    # Honest read on every directional call the primary made, overlap-aware.
+    m = CONFIG.meta
+    summary["edge"] = edge_report(
+        oof, n_boot=m.bootstrap_samples, alpha=m.significance_alpha,
+        min_trades=m.min_fire_trades, min_days=m.min_fire_days,
+    )
+    log.info("edge check (all directional calls): %s", summary["edge"]["verdict"])
+
     reports = CONFIG.paths.reports_dir / "cv"
     reports.mkdir(parents=True, exist_ok=True)
     oof.to_parquet(reports / "oof.parquet", engine="pyarrow")
@@ -66,16 +76,29 @@ def train_and_validate(n_trials: int = 0, holdout_days: int = 0) -> pd.DataFrame
         json.dumps(primary.fold_metrics, indent=2, default=str), encoding="utf-8")
     primary.feature_importance.to_csv(reports / "feature_importance.csv")
 
-    dir_scores = oof.loc[oof["primary_pred"].fillna(0) != 0, "meta_score"].dropna()
-    fire_threshold = (
-        float(dir_scores.quantile(1 - CONFIG.meta.fire_top_fraction))
-        if len(dir_scores) >= 10 else None
-    )
+    if m.require_proven_edge:
+        fire_threshold, gate = choose_fire_threshold(
+            oof, min_trades=m.min_fire_trades, min_days=m.min_fire_days,
+            n_boot=m.bootstrap_samples, alpha=m.significance_alpha,
+        )
+    else:
+        dir_scores = oof.loc[oof["primary_pred"].fillna(0) != 0, "meta_score"].dropna()
+        fire_threshold = (
+            float(dir_scores.quantile(1 - CONFIG.meta.fire_top_fraction))
+            if len(dir_scores) >= 10 else None
+        )
+        gate = {"require_proven_edge": False,
+                "verdict": "evidence gate disabled - firing the top slice by rank alone"}
+    summary["fire_gate"] = gate
+    if fire_threshold is None:
+        log.info("no fire threshold saved - the model will make no live calls. "
+                 "This is the intended behaviour until an edge is demonstrable.")
 
-    final_primary = fit_final(X, y, params=params)
-    final_meta = fit_final_meta(X, y, primary.oof, params=None)
+    final_primary = fit_final(X, y, params=params, t_entry=t_entry, t_end=t_end)
+    final_meta = fit_final_meta(X, y, primary.oof, params=None,
+                                t_entry=t_entry, t_end=t_end)
     train_data_end = str(pd.Timestamp(df["day"].max()).date())   # robust to date/datetime64
     save_bundle(final_primary, final_meta, list(X.columns), params, summary,
-                fire_threshold, train_data_end)
+                fire_threshold, train_data_end, primary_folds=primary.fold_models)
 
     return oof

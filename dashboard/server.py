@@ -228,8 +228,12 @@ def _model_info(cfg) -> dict | None:
     hc = card.get("metrics", {}).get("high_confidence", {})
     n_fired = hc.get("n_fired") or 0
     precision = hc.get("precision")
+    edge = card.get("edge") or {}
+
     if card.get("fire_threshold") is None:
-        verdict = "Not enough history yet to trust a confidence filter - it will not make live calls until it has more data. That's expected for a newly added stock."
+        verdict = ("Staying silent - it has not shown it can beat a simple "
+                   "rule-of-thumb, so it makes no live calls. That is the intended "
+                   "behaviour, not a failure.")
     elif not n_fired:
         verdict = "Still learning - it isn't confident enough yet to make a call. It needs more trading days of data."
     elif precision is not None and precision >= 0.55:
@@ -237,8 +241,47 @@ def _model_info(cfg) -> dict | None:
     else:
         verdict = f"Making a few confident calls, but only right ~{precision:.0%} of the time so far - treat with caution."
     card["plain_verdict"] = verdict
+
+    # The question the dashboard exists to answer: is this thing actually working?
+    card["edge_summary"] = _edge_summary(card, edge)
     card["mtime"] = _mtime_iso(cfg.paths.models_dir / "model_card.json")
     return card
+
+
+def _edge_summary(card: dict, edge: dict) -> dict:
+    """Plain-language 'has this been proven to work yet?' for the dashboard.
+
+    Deliberately conservative: anything short of a demonstrated edge reads as
+    'unproven', never as mild encouragement.
+    """
+    firing = card.get("fire_threshold") is not None
+    n, days = edge.get("n_fired") or 0, edge.get("n_days") or 0
+    need_n = edge.get("min_trades_required", 30)
+    need_d = edge.get("min_days_required", 15)
+
+    if edge.get("has_edge"):
+        return {
+            "state": "proven", "headline": "Beating the simple baseline",
+            "detail": edge.get("verdict", ""),
+            "firing": firing,
+        }
+    if n < need_n or days < need_d:
+        return {
+            "state": "insufficient",
+            "headline": "Not enough evidence yet to judge",
+            "detail": (f"It has made {n} practice calls across {days} trading days. "
+                       f"Judging whether it beats a coin-toss-style rule needs at least "
+                       f"{need_n} calls across {need_d} days. Keep the collector running."),
+            "firing": firing,
+        }
+    return {
+        "state": "no_edge",
+        "headline": "No real skill detected so far",
+        "detail": (edge.get("verdict") or
+                   "Its practice calls are not better than a simple always-guess-the-"
+                   "common-direction rule, once the overlap between calls is accounted for."),
+        "firing": firing,
+    }
 
 
 def _backtest_info(cfg) -> dict | None:

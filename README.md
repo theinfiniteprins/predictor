@@ -23,16 +23,42 @@ See `intraday-prediction-tool-plan.md` (kept in Downloads) for the full design r
 | 3 | Triple-barrier labeling (`labeling/`) | ✅ built |
 | 4 | Primary model + purged/embargoed walk-forward CV | ✅ built |
 | 5 | Meta-labeling confidence filter | ✅ built |
+| 5b | Evidence gate — refuse to fire without a proven edge | ✅ built |
 | 6 | Backtest, threshold sweep | ✅ built |
 | 7 | Paper-trade 4–8 weeks (`papertrade.py`, `scripts/paper_log.py`) | ✅ harness built, accumulating |
 | 8 | (optional) sequence models / ensembling on larger dataset | not started |
 
 > **Data depth, not code, is the blocker now.** The full pipeline runs end-to-end,
-> but with only ~59 days of yfinance history (~105 directional labels at k=1.0) the
-> models cannot yet learn a real edge — the primary just predicts "timeout". This
-> is expected (see §11 of the plan). Keep the cloud collector running; revisit
-> training in 2–3 months. `k=0.6` produces enough directional labels to exercise
-> the meta path in the meantime.
+> but with only ~70 days of history the models cannot yet learn a real edge — the
+> primary mostly predicts "timeout". This is expected (see §11 of the plan). Keep the
+> cloud collector running; revisit training in 2–3 months.
+
+## How we know whether it works yet
+
+The honest answer today is **it doesn't, and the system now says so itself.**
+
+Measured on the current history, no configuration beats a no-skill baseline. Run
+`python scripts/research.py` to reproduce that verdict at any time — it re-runs the
+comparison as data accumulates, so you find out the moment something genuinely changes.
+
+Three measurement traps this project explicitly guards against:
+
+- **Overlapping labels.** Rolling entries every 15 min nearly all resolve at the same
+  15:20 vertical barrier, and 23 of the 53 features are constant within a day. ~1,500
+  rows carry only **~115 independent observations**. Row-wise (Wilson/binomial)
+  intervals are ~2–3× too narrow here, so every headline interval is a **day-block
+  bootstrap** instead (`validation/significance.py`). Training also weights rows by
+  [average uniqueness](src/predictor/labeling/uniqueness.py) so one session can't count
+  as 21 pieces of evidence.
+- **The wrong baseline.** Barrier touches are asymmetric — in a drifting market the
+  lower barrier is hit far more often, so "always say down" scores well while
+  predicting nothing. The bar to clear is that baseline, not a coin flip.
+- **A cutoff that always fires.** `fire_top_fraction` is a *relative* quantile: the top
+  15% fires no matter how bad the calls are. With `require_proven_edge: true` (default)
+  a threshold is saved **only** if the out-of-fold record beats the naive baseline with
+  the bootstrap lower bound above zero. Otherwise `fire_threshold` is `null` and the
+  model stays silent. Silence is a correct output, not a failure — the dashboard's
+  "Is it actually working?" card says which state you're in and why.
 
 ## Phase 0 parameters (finalized)
 
@@ -99,6 +125,8 @@ pipeline.
 
 ```bash
 python scripts/report.py --signals              # the dashboard: dataset / model / CV / backtest / paper log
+python scripts/research.py                      # does anything beat a no-skill baseline? (re-run as data grows)
+python scripts/research.py --k-sweep            # ...also re-label at several barrier widths (slow)
 python scripts/build_dataset.py --k 0.6         # rebuild with a different barrier multiplier
 python scripts/train.py --tune 200              # walk-forward primary + meta, Optuna search
 python scripts/predict_today.py --at 11:15      # what the model says for one entry point

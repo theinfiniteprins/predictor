@@ -258,17 +258,49 @@
     }
     const hc = (m.metrics && m.metrics.high_confidence) || {};
     const tone = m.fire_threshold == null ? "neutral" : !hc.n_fired ? "neutral" : (hc.precision ?? 0) >= 0.55 ? "good" : "warn";
+    const edge = m.edge || {};
+    const ci = edge.margin_ci || [];
     el.innerHTML = `
       ${verdictBox(m.plain_verdict, tone)}
+      ${statRow("Live calls", m.fire_threshold == null
+        ? '<span class="dir-flat">silent — none</span>'
+        : '<span class="dir-up">enabled</span>')}
       ${statRow("Last trained", fmtRelative(m.trained_at))}
       ${statRow("Trained through", m.train_data_end ?? "—")}
-      ${statRow("Confident calls it would fire", `${hc.n_fired ?? 0} (~${hc.fires_per_day ? hc.fires_per_day.toFixed(2) : 0}/day)`)}
+      ${statRow("Practice calls made", `${edge.n_fired ?? 0} over ${edge.n_days ?? 0} days`)}
       <details style="margin-top:0.5rem">
         <summary class="muted">Technical detail</summary>
         ${statRow("Directional precision (all calls)", pct((m.metrics && m.metrics.directional && m.metrics.directional.precision)))}
+        ${statRow("Naive baseline on same calls", pct(edge.naive_precision))}
+        ${statRow("Margin over baseline", edge.margin != null ? pct(edge.margin, 1) : "—")}
+        ${statRow("Margin 95% CI (day-block)", ci.length && ci[0] != null
+          ? `${pct(ci[0], 1)} to ${pct(ci[1], 1)}` : "—")}
         ${statRow("High-confidence precision", pct(hc.precision))}
         ${statRow("Fire threshold", m.fire_threshold != null ? m.fire_threshold.toFixed(3) : "not set")}
       </details>
+    `;
+  }
+
+  function renderEdge(m) {
+    const el = document.querySelector("#card-edge .card-body");
+    const s = m && m.edge_summary;
+    if (!s) {
+      el.innerHTML = `<p class="muted">Train a model to get a verdict.</p>`;
+      return;
+    }
+    const tone = s.state === "proven" ? "good" : s.state === "no_edge" ? "warn" : "neutral";
+    const icon = s.state === "proven" ? "✅" : s.state === "no_edge" ? "⚠️" : "⏳";
+    el.innerHTML = `
+      ${verdictBox(`${icon} <strong>${s.headline}</strong>`, tone)}
+      <p class="muted" style="margin:0 0 0.6rem">${s.detail}</p>
+      ${statRow("Making live calls?", s.firing
+        ? '<span class="dir-up">yes</span>'
+        : '<span class="dir-flat">no — staying silent</span>')}
+      <p class="muted" style="margin:0.6rem 0 0; font-size:0.8rem">
+        "Beating the baseline" means doing better than always guessing whichever
+        direction happens to be more common — measured so that overlapping calls
+        on the same day can't make a weak result look strong.
+      </p>
     `;
   }
 
@@ -546,6 +578,7 @@
       renderCollector(data.collector);
       renderDataset(data.dataset);
       renderModel(data.model);
+      renderEdge(data.model);
       renderBacktest(data.backtest);
       renderPaper(data.paper_trading);
       renderSchedule(data.scheduled_task);

@@ -28,7 +28,7 @@ from .dataset import load as load_dataset
 from .logging_setup import get_logger
 from .models.meta import confidence_features
 from .models.persist import _CARD, load_bundle
-from .models.primary import PROBA_COLS, _LABELS
+from .models.primary import PROBA_COLS, _LABELS, predict_proba as primary_proba
 
 log = get_logger("papertrade")
 
@@ -74,7 +74,7 @@ def run(since: dt.date | None = None, rebuild: bool = False, build: bool = True)
 
     feat_cols = bundle["feature_columns"]
     X = todo.reindex(columns=feat_cols).astype("float64")
-    proba = bundle["primary"].predict_proba(X.to_numpy(na_value=np.nan))
+    proba = primary_proba(bundle, X.to_numpy(na_value=np.nan))
     pred = _LABELS[np.argmax(proba, axis=1)]
 
     proba_df = pd.DataFrame(proba, columns=PROBA_COLS, index=todo.index)

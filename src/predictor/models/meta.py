@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 from lightgbm import LGBMClassifier
 
+from ..labeling.uniqueness import uniqueness_weights
 from ..logging_setup import get_logger
 from ..validation.purged_cv import PurgedWalkForwardCV
 from .primary import PROBA_COLS
@@ -76,6 +77,7 @@ def fit_walk_forward_meta(
     Xv = meta_X.to_numpy(dtype="float64", na_value=np.nan)
     yv = correct.to_numpy()
     dir_mask = directional.to_numpy()
+    uniq = uniqueness_weights(t_entry, t_end)
 
     n = 0
     for tr, te in cv.split(t_entry, t_end):
@@ -86,7 +88,7 @@ def fit_walk_forward_meta(
         if len(np.unique(yv[tr])) < 2:
             continue
         model = LGBMClassifier(**params)
-        model.fit(Xv[tr], yv[tr])
+        model.fit(Xv[tr], yv[tr], sample_weight=uniq[tr])
         score.iloc[te] = model.predict_proba(Xv[te])[:, 1]
         n += 1
 
@@ -95,7 +97,12 @@ def fit_walk_forward_meta(
 
 
 def fit_final_meta(
-    X: pd.DataFrame, y_true: pd.Series, primary_oof: pd.DataFrame, params: dict | None = None
+    X: pd.DataFrame,
+    y_true: pd.Series,
+    primary_oof: pd.DataFrame,
+    params: dict | None = None,
+    t_entry: pd.Series | None = None,
+    t_end: pd.Series | None = None,
 ) -> LGBMClassifier | None:
     params = {**default_params(), **(params or {})}
     meta_X = _meta_frame(X, primary_oof)
@@ -105,6 +112,10 @@ def fit_final_meta(
     if y.nunique() < 2 or mask.sum() < 40:
         log.warning("not enough directional history to fit a final meta-model")
         return None
+    w = None
+    if t_entry is not None and t_end is not None:
+        w = uniqueness_weights(t_entry, t_end)[mask.to_numpy()]
     model = LGBMClassifier(**params)
-    model.fit(meta_X[mask].to_numpy(dtype="float64", na_value=np.nan), y.to_numpy())
+    model.fit(meta_X[mask].to_numpy(dtype="float64", na_value=np.nan), y.to_numpy(),
+              sample_weight=w)
     return model

@@ -57,6 +57,17 @@ def main() -> None:
         print(f"OOF directional : n_fired={dirn.get('n_fired')}  precision={dirn.get('precision')}")
         print(f"OOF high-conf   : n_fired={hc.get('n_fired')}  precision={hc.get('precision')}  "
               f"fires/day={hc.get('fires_per_day')}")
+
+        edge = card.get("edge") or {}
+        if edge:
+            ci = edge.get("margin_ci") or [float("nan"), float("nan")]
+            print(f"\nEDGE CHECK (overlap-aware, vs naive 'always {edge.get('naive_side')}'):")
+            print(f"  {edge.get('n_fired')} calls over {edge.get('n_days')} days | "
+                  f"model {edge.get('precision')} vs naive {edge.get('naive_precision')}")
+            print(f"  margin 95% CI (day-block): [{ci[0]}, {ci[1]}]")
+            print(f"  -> {edge.get('verdict')}")
+        if card.get("fire_threshold") is None:
+            print("  LIVE CALLS: none - the model stays silent until it proves an edge.")
     else:
         print("no model - run scripts/train.py")
 

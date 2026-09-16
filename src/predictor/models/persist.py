@@ -20,12 +20,16 @@ _CARD = CONFIG.paths.models_dir / "model_card.json"
 def save_bundle(
     primary, meta, feature_columns: list[str], params: dict, metrics: dict,
     fire_threshold: float | None = None, train_data_end: str | None = None,
+    primary_folds: list | None = None,
 ) -> None:
     CONFIG.paths.models_dir.mkdir(parents=True, exist_ok=True)
     joblib.dump(
         {"primary": primary, "meta": meta, "feature_columns": feature_columns,
          "params": params, "fire_threshold": fire_threshold,
-         "train_data_end": train_data_end},
+         "train_data_end": train_data_end,
+         # walk-forward fold models, averaged at serve time so the meta-model sees
+         # the same kind of probabilities it was trained on (see primary.predict_proba)
+         "primary_folds": primary_folds or []},
         _BUNDLE,
     )
     _CARD.write_text(json.dumps({
@@ -37,8 +41,12 @@ def save_bundle(
         "barrier_time_scaling": CONFIG.labeling.barrier_time_scaling,
         "fire_top_fraction": CONFIG.meta.fire_top_fraction,
         "fire_threshold": fire_threshold,
+        "edge": metrics.get("edge"),
+        "fire_gate": metrics.get("fire_gate"),
+        "requires_proven_edge": CONFIG.meta.require_proven_edge,
     }, indent=2, default=str), encoding="utf-8")
-    log.info("saved model bundle -> %s  (fire_threshold=%s)", _BUNDLE, fire_threshold)
+    log.info("saved model bundle -> %s  (fire_threshold=%s, %d fold models)",
+             _BUNDLE, fire_threshold, len(primary_folds or []))
 
 
 def load_bundle() -> dict:

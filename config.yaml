@@ -53,6 +53,19 @@ cv:                             # Phase 4 — purged + embargoed walk-forward
 meta:                           # Phase 5
   fire_top_fraction: 0.15       # act only on top 15% highest-confidence calls
 
+  # Evidence gate (Phase 5b). fire_top_fraction alone is a RELATIVE cutoff, so the
+  # top 15% always fires no matter how bad the calls are. With require_proven_edge on,
+  # a threshold is only saved if the out-of-fold record beats the naive "always name
+  # the majority direction" baseline, measured with a day-block bootstrap (rolling
+  # entries overlap, so row-wise intervals are ~2-3x too narrow - see
+  # validation/significance.py). No proven edge -> fire_threshold is null -> the model
+  # stays silent. Silence is the correct output when there is nothing to say.
+  require_proven_edge: true
+  min_fire_trades: 30           # fewest OOF calls before an edge is even testable
+  min_fire_days: 15             # ...spread over at least this many distinct sessions
+  bootstrap_samples: 2000
+  significance_alpha: 0.05
+
 paths:
   data_dir: "data"
   models_dir: "models"
