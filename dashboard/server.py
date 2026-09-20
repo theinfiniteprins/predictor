@@ -45,6 +45,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 import yaml  # noqa: E402
 
@@ -324,6 +325,18 @@ def _backtest_info(cfg) -> dict | None:
     return bt
 
 
+def _readiness_info(cfg) -> dict | None:
+    """The 'can I put real money behind this?' checklist."""
+    from predictor.validation.readiness import readiness_report
+
+    card = _load_json(cfg.paths.models_dir / "model_card.json")
+    log_path = cfg.paths.reports_dir / "paper_trades.parquet"
+    paper = pd.read_parquet(log_path) if log_path.exists() else None
+    # 800 resamples: this runs on every dashboard poll, and the verdict is a
+    # pass/fail on a wide interval rather than a number anyone reads to 3 decimals.
+    return readiness_report(card, paper, n_boot=800)
+
+
 def _paper_trading_info(cfg) -> dict | None:
     """Mirrors predictor.papertrade.summarize(), but against a per-instrument `cfg`
     instead of that module's frozen module-level CONFIG (which is pinned to one
@@ -452,7 +465,21 @@ def _daily_detail(cfg, n_days: int = 5) -> dict:
                 "in_sample": bool(row.get("in_sample")) if pd.notna(row.get("in_sample")) else False,
                 "ret_at_touch": _float_or_none(row.get("ret_at_touch")),
             })
-        out_days.append({"date": str(d), "market": market.get(str(d)), "entries": entries})
+        # How far price had to travel for any call to resolve. Without this the
+        # "neither target hit" rows look like the market did nothing, when usually it
+        # moved plenty - just not the ~190 points the barrier asked for.
+        target_pts = np.nan
+        if {"upper", "entry_price"} <= set(day_rows.columns):
+            target_pts = float((day_rows["upper"] - day_rows["entry_price"]).median())
+        mk = market.get(str(d))
+        moved_pts = float(mk["high"] - mk["low"]) if mk else np.nan
+        out_days.append({
+            "date": str(d),
+            "market": mk,
+            "target_pts": None if not np.isfinite(target_pts) else target_pts,
+            "moved_pts": None if not np.isfinite(moved_pts) else moved_pts,
+            "entries": entries,
+        })
 
     return {"source": source, "days": out_days}
 
@@ -523,6 +550,7 @@ def build_status(instrument: str) -> dict:
         "model": _safe(lambda: _model_info(cfg), None),
         "backtest": _safe(lambda: _backtest_info(cfg), None),
         "paper_trading": _safe(lambda: _paper_trading_info(cfg), None),
+        "readiness": _safe(lambda: _readiness_info(cfg), None),
         "scheduled_task": _safe(lambda: _scheduled_task_info(cfg.instrument.name), {"scheduled": False}),
         "last_collector_commit": _safe(lambda: _last_collector_commit(cfg.paths.root), None),
         "log_tail": _safe(lambda: _log_tail(cfg, 60), []),

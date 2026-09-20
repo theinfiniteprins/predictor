@@ -281,6 +281,35 @@
     `;
   }
 
+  function renderReadiness(r) {
+    const el = document.querySelector("#card-readiness .card-body");
+    if (!r) {
+      el.innerHTML = `<p class="muted">Train a model to get a verdict.</p>`;
+      return;
+    }
+    const tone = r.ready ? "good" : "neutral";
+    const icon = r.ready ? "✅" : "🔒";
+    const items = (r.checks || []).map((c) => `
+      <li class="${c.passed ? "chk-pass" : "chk-fail"}">
+        <span class="mark">${c.passed ? "✓" : "○"}</span>
+        <span>
+          <strong>${c.name}</strong><br />
+          <span class="muted">${c.detail}</span>
+          ${c.how_to_fix ? `<br /><span class="muted" style="font-style:italic">${c.how_to_fix}</span>` : ""}
+        </span>
+      </li>`).join("");
+    el.innerHTML = `
+      ${verdictBox(`${icon} <strong>${r.headline}</strong>`, tone)}
+      <p class="muted" style="margin:0 0 0.6rem">${r.detail}</p>
+      <ul class="check-list">${items}</ul>
+      <p class="muted" style="margin:0.6rem 0 0; font-size:0.8rem">
+        All ${r.total} must pass. The strictest ones need a <strong>forward</strong>
+        record — calls the live model actually made before the outcome existed.
+        A backtest cannot satisfy those, however good it looks.
+      </p>
+    `;
+  }
+
   function renderEdge(m) {
     const el = document.querySelector("#card-edge .card-body");
     const s = m && m.edge_summary;
@@ -373,10 +402,20 @@
 
   // ---- day-by-day detail -------------------------------------------------
 
+  // The prediction and the outcome mean different things when they're both 0, and
+  // labelling the outcome "No signal" reads as if the market failed to do something.
+  // It didn't: neither price target was reached before the 15:20 cutoff.
   function directionLabel(v) {
     if (v === 1) return "UP";
     if (v === -1) return "DOWN";
     if (v === 0) return "No signal";
+    return "—";
+  }
+
+  function outcomeLabel(v) {
+    if (v === 1) return "Hit UP target";
+    if (v === -1) return "Hit DOWN target";
+    if (v === 0) return "Neither target hit";
     return "—";
   }
 
@@ -423,6 +462,13 @@
       const correctFired = fired.filter((e) => e.correct).length;
       const summaryStats = `${day.entries.length} check-ins · ${fired.length} acted on` +
         (fired.length ? ` (${correctFired}/${fired.length} correct)` : "");
+      const targetNote = (day.target_pts != null && day.moved_pts != null)
+        ? `<p class="muted" style="margin:0.5rem 0.9rem 0">A call only resolves if price
+             travels about <strong>±${day.target_pts.toFixed(0)} points</strong> from entry
+             before 15:20. It ranged ${day.moved_pts.toFixed(0)} points this day, so
+             "neither target hit" means the move was real but too small to count —
+             not that the market stood still.</p>`
+        : "";
 
       const rows = day.entries.map((e) => `
         <tr class="${e.fired ? "fired-row" : ""}">
@@ -431,7 +477,7 @@
           <td class="${directionClass(e.predicted)}">${directionLabel(e.predicted)}</td>
           <td>${e.meta_score != null ? (e.meta_score * 100).toFixed(1) + "%" : "—"}</td>
           <td>${e.fired ? "🔔 acted" : "watched only"}</td>
-          <td class="${directionClass(e.actual)}">${directionLabel(e.actual)}</td>
+          <td class="${directionClass(e.actual)}">${outcomeLabel(e.actual)}</td>
           <td>${e.correct === null ? "—" : e.correct ? "✓" : "✗"}</td>
           <td>${e.in_sample ? '<span class="tag">training data</span>' : ""}</td>
         </tr>`).join("");
@@ -443,6 +489,7 @@
             <span class="day-move ${moveTone}">${moveText}</span>
             <span class="day-stats muted">${summaryStats}</span>
           </summary>
+          ${targetNote}
           <div class="day-table-wrap">
             <table class="day-table">
               <thead><tr><th>Time</th><th>Price</th><th>Predicted</th><th>Confidence</th>
@@ -585,6 +632,7 @@
       renderDataset(data.dataset);
       renderModel(data.model);
       renderEdge(data.model);
+      renderReadiness(data.readiness);
       renderBacktest(data.backtest, data.model);
       renderPaper(data.paper_trading);
       renderSchedule(data.scheduled_task);

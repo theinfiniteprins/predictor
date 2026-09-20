@@ -295,6 +295,25 @@ main {
 
 details > summary { cursor: pointer; }
 
+.check-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.check-list li {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+.check-list .mark { flex-shrink: 0; width: 14px; }
+.check-list li.chk-pass .mark { color: var(--green); }
+.check-list li.chk-fail .mark { color: var(--muted); }
+.check-list li.chk-fail strong { color: var(--muted); font-weight: 600; }
+
 .day-block {
   border: 1px solid var(--border);
   border-radius: 10px;

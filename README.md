@@ -87,6 +87,38 @@ Two numbers worth knowing:
   calendar day, detecting even a *5pp* edge takes on the order of 1,000 sessions. The
   measurement is far coarser than the edge that would pay for itself.
 
+### What "failure" actually means here
+
+`python scripts/research.py --failures` runs the post-mortem. The headline result is
+counter-intuitive and worth internalising:
+
+| Outcome of a directional call | Share |
+|---|---|
+| Correct | 4.7% |
+| **Wrong direction** ("said UP, went DOWN") | **6.2%** |
+| **Neither target hit** (nothing happened) | **89.0%** |
+
+**93% of failures are "nothing happened", not "wrong direction".** The model is rarely
+fooled about which way the market went — it is wrong that a move would happen at all.
+So asking "why did it pick the wrong direction?" investigates a minority of the misses.
+
+Tested across 34 slices (time of day, volatility regime, weekday, confidence, side) on
+14,868 pooled rows, exactly 1 stood out at 95% — fewer than the ~1.7 chance alone would
+produce. **Failures do not cluster anywhere; they are noise.** That is why there is no
+auto-retune-on-failure loop here: training against noise manufactures signal, and doing
+it repeatedly against the same data is precisely what the evidence gate exists to stop.
+The diagnosis is worth having; the automatic reaction to it is not.
+
+### "Can I trade this with real money yet?"
+
+The dashboard's **Ready for real money?** card runs a six-point checklist, all of which
+must pass ([readiness.py](src/predictor/validation/readiness.py)). The important ones
+cannot be satisfied by a backtest at all — they need a *forward* record of calls the
+deployed model actually made before the outcome existed (50+ calls over 60+ sessions,
+profitable with the whole confidence interval above zero, and still working lately).
+
+Today it reads **0 of 6**, and names the first blocker. That is the honest state.
+
 That gap is the real constraint, and it points at the one lever that actually moves:
 evaluating across 12 instruments instead of one **halved** the confidence-interval width
 on the same 44 days (0.219 → 0.112). Registering more instruments does not make the

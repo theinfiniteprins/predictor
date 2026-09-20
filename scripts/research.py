@@ -60,6 +60,99 @@ def _score(name, pred, d, n_boot):
     }
 
 
+def _failure_report(n_boot: int) -> None:
+    """Post-mortem on the calls that went wrong.
+
+    Answers two questions honestly. First, what does "failure" even mean here - being
+    wrong about direction, or being wrong that anything would happen at all. Second,
+    whether the failures cluster anywhere real, tested across many slices with the
+    multiple-comparison problem stated rather than ignored.
+
+    It deliberately stops at diagnosis. Auto-retuning on whatever this surfaces would
+    be optimising against the same data again, which is how a system talks itself into
+    a signal that isn't there.
+    """
+    from predictor.validation.significance import day_block_bootstrap
+
+    oof_path = CONFIG.paths.reports_dir / "cv" / "oof.parquet"
+    if not oof_path.exists():
+        print("no out-of-fold record yet - run scripts/train.py first")
+        return
+    oof = pd.read_parquet(oof_path)
+    d = oof[(oof["primary_pred"].notna()) & (oof["primary_pred"] != 0)].copy()
+    d = d.dropna(subset=["label"]).reset_index()
+    if d.empty:
+        print("the model made no directional calls, so there is nothing to post-mortem")
+        return
+
+    n = len(d)
+    right = int((d["primary_pred"] == d["label"]).sum())
+    opp = int((d["primary_pred"] == -d["label"]).sum())
+    nothing = int((d["label"] == 0).sum())
+    print(f"\n=== What kind of failure is it? ({n} directional calls, "
+          f"{d['day'].nunique()} days) ===")
+    print(f"  correct .............. {right:5d}  ({100*right/n:5.1f}%)")
+    print(f"  wrong direction ...... {opp:5d}  ({100*opp/n:5.1f}%)   'said UP, went DOWN'")
+    print(f"  neither target hit ... {nothing:5d}  ({100*nothing/n:5.1f}%)   nothing happened")
+    misses = n - right
+    if misses:
+        print(f"\n  {100*nothing/misses:.0f}% of failures are 'nothing happened'. That is a "
+              "magnitude\n  problem, not a direction problem - the model called a move that "
+              "never came,\n  rather than calling the move backwards.")
+
+    print(f"\n=== Do failures cluster anywhere? ===")
+    d["correct"] = (d["primary_pred"] == d["label"]).astype(float)
+    overall = float(d["correct"].mean())
+    d["t"] = pd.DatetimeIndex(d["t_entry"]).strftime("%H:%M")
+    d["weekday"] = pd.DatetimeIndex(d["day"]).day_name()
+    d["side"] = d["primary_pred"].map({1: "said UP", -1: "said DOWN"})
+    groups = {"time of day": "t", "weekday": "weekday", "side": "side"}
+    if "meta_score" in d and d["meta_score"].nunique(dropna=True) >= 3:
+        try:
+            # no explicit labels: duplicates="drop" can collapse bins, and then a
+            # fixed-length label list no longer matches the edges that survive
+            d["confidence"] = pd.qcut(d["meta_score"], 3, duplicates="drop").astype(str)
+            groups["confidence"] = "confidence"
+        except ValueError:
+            pass
+
+    rows = []
+    for fam, col in groups.items():
+        for name, g in d.groupby(col, observed=True):
+            if len(g) < 15:
+                continue
+            lo, _, hi = day_block_bootstrap(
+                g, lambda z: float(z["correct"].mean()) - overall, n_boot=n_boot)
+            # A slice that is uniformly right or uniformly wrong resamples to the same
+            # value every time, so the interval collapses to a point and would read as
+            # highly significant while carrying no information at all.
+            degenerate = (not np.isfinite(lo) or not np.isfinite(hi)
+                          or (hi - lo) < 1e-9 or g["day"].nunique() < 5)
+            rows.append({"family": fam, "slice": str(name), "n": len(g),
+                         "days": int(g["day"].nunique()),
+                         "precision": round(float(g["correct"].mean()), 4),
+                         "vs_overall": round(float(g["correct"].mean()) - overall, 4),
+                         "ci_lo": round(lo, 4), "ci_hi": round(hi, 4),
+                         "stands_out": bool(not degenerate and (lo > 0 or hi < 0))})
+    if not rows:
+        print("  not enough calls in any slice to test")
+        return
+    t = pd.DataFrame(rows)
+    print(f"overall precision {overall:.4f}\n")
+    print(t.to_string(index=False))
+    n_sig, n_tests = int(t["stands_out"].sum()), len(t)
+    print(f"\n{n_tests} slices tested; {n_sig} stand out at 95%. "
+          f"Pure chance would produce about {0.05*n_tests:.1f}.")
+    if n_sig <= 0.05 * n_tests:
+        print("That is at or below the chance rate, so there is no real pattern here:\n"
+              "these failures are noise. Tuning the model against them would be fitting\n"
+              "noise, and would quietly undermine the evidence gate.")
+    else:
+        print("Some slices exceed the chance rate. Before acting, re-check them after\n"
+              "more data arrives - selecting the worst slice of many is itself a way to\n"
+              "manufacture a finding.")
+
+
 def _walk_forward_pred(X, y, t_entry, t_end, params=None, use_uniqueness=True):
     from predictor.models.primary import fit_walk_forward
     res = fit_walk_forward(X, y, t_entry, t_end, params=params, use_uniqueness=use_uniqueness)
@@ -71,8 +164,14 @@ def main() -> None:
     ap.add_argument("--k-sweep", action="store_true", help="re-label at several barrier k (slow)")
     ap.add_argument("--k-values", default="0.5,0.6,0.8,1.0,1.5")
     ap.add_argument("--n-boot", type=int, default=1000)
+    ap.add_argument("--failures", action="store_true",
+                    help="post-mortem: what kind of calls fail, and is there a pattern?")
     ap.add_argument("--instrument", default=None, help="instrument key from instruments.yaml")
     args = ap.parse_args()
+
+    if args.failures:
+        _failure_report(args.n_boot)
+        return
 
     from predictor.dataset import load as load_dataset, split_xy
     from predictor.labeling.uniqueness import average_uniqueness
