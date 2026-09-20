@@ -100,3 +100,31 @@ def test_empty_input_is_handled():
     assert rep["n_fired"] == 0 and rep["has_edge"] is False
     thr, _ = choose_fire_threshold(empty.assign(meta_score=[]))
     assert thr is None
+
+
+def test_breakeven_bar_blocks_a_real_but_unprofitable_edge():
+    """Beating the naive baseline is not enough if costs still eat the result."""
+    from predictor.validation.significance import breakeven_precision
+
+    rows = []
+    rng = np.random.default_rng(5)
+    for d in range(40):
+        day = pd.Timestamp("2026-01-05") + pd.Timedelta(days=d)
+        for i in range(6):
+            # barriers so tight that break-even precision is pushed very high
+            pred = 1 if rng.random() < 0.5 else -1
+            label = pred if i == 0 else 0
+            rows.append({"day": day, "primary_pred": pred, "label": label,
+                         "ret_at_touch": 0.0001, "sigma_effective": 0.00005, "k": 1.0})
+    f = pd.DataFrame(rows)
+    be = breakeven_precision(f)
+    assert be > 0.5, f"tight barriers should demand high precision, got {be}"
+    rep = edge_report(f, n_boot=300)
+    assert rep["clears_breakeven"] is False
+    assert rep["has_edge"] is False
+
+
+def test_breakeven_is_nan_without_barrier_columns():
+    from predictor.validation.significance import breakeven_precision
+    f = pd.DataFrame({"day": [1], "primary_pred": [1], "label": [1]})
+    assert np.isnan(breakeven_precision(f))

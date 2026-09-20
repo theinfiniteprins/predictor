@@ -100,6 +100,8 @@ class MetaConfig:
     min_fire_days: int = 15
     bootstrap_samples: int = 2000
     significance_alpha: float = 0.05
+    confirm_days: int = 20
+    min_consecutive_passes: int = 3
 
 
 @dataclass(frozen=True)
@@ -271,6 +273,8 @@ def _build_config(path: str | Path | None, inst_key: str) -> Config:
             min_fire_days=int(raw["meta"].get("min_fire_days", 15)),
             bootstrap_samples=int(raw["meta"].get("bootstrap_samples", 2000)),
             significance_alpha=float(raw["meta"].get("significance_alpha", 0.05)),
+            confirm_days=int(raw["meta"].get("confirm_days", 20)),
+            min_consecutive_passes=int(raw["meta"].get("min_consecutive_passes", 3)),
         ),
         paths=paths,
         raw=raw,

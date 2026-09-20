@@ -37,15 +37,22 @@ def _score(name, pred, d, n_boot):
     f = pd.DataFrame({
         "primary_pred": pred, "label": d["label"].to_numpy(),
         "day": d["day"].to_numpy(), "ret_at_touch": d["ret_at_touch"].to_numpy(),
+        "sigma_effective": d["sigma_effective"].to_numpy(),
+        "k": d["k"].to_numpy(),
     })
     rep = edge_report(f, n_boot=n_boot, min_trades=30, min_days=10)
+
+    def r(key, nd=4):
+        v = rep.get(key, np.nan)
+        return round(v, nd) if isinstance(v, (int, float)) and np.isfinite(v) else np.nan
+
     return {
         "variant": name,
         "fired": rep["n_fired"],
         "days": rep["n_days"],
-        "precision": round(rep["precision"], 4) if np.isfinite(rep.get("precision", np.nan)) else np.nan,
-        "naive": round(rep["naive_precision"], 4) if np.isfinite(rep.get("naive_precision", np.nan)) else np.nan,
-        "margin": round(rep["margin"], 4) if np.isfinite(rep.get("margin", np.nan)) else np.nan,
+        "precision": r("precision"),
+        "naive": r("naive_precision"),
+        "breakeven": r("breakeven_precision"),
         "margin_lo": round(rep["margin_ci"][0], 4) if np.isfinite(rep["margin_ci"][0]) else np.nan,
         "margin_hi": round(rep["margin_ci"][1], 4) if np.isfinite(rep["margin_ci"][1]) else np.nan,
         "net_ret_%": round(100 * rep.get("net_return_total", np.nan), 3),
@@ -141,11 +148,29 @@ def main() -> None:
 
     out = pd.DataFrame(rows)
     print(out.to_string(index=False))
-    print("\nedge=True means: beat 'always name the majority direction' with the\n"
-          "day-block bootstrap lower bound above zero. Anything else is not yet real.")
+    print("\nedge=True needs BOTH: the day-block bootstrap lower bound on margin over\n"
+          "'always name the majority direction' above zero, AND precision clearing the\n"
+          "break-even bar (costs). Beating the baseline while losing money is not an edge.")
     if not out["edge"].any():
         print("\nNo variant shows a real edge yet. The correct response is to keep\n"
               "collecting and keep firing nothing - not to loosen the threshold.")
+
+    # How far off is 'knowing'? Compare the width of what we can measure against the
+    # size of edge that would actually pay.
+    ref = out[out["variant"] == "MODEL current defaults"]
+    if len(ref):
+        best = ref.iloc[0]
+        if np.isfinite(best.get("breakeven", np.nan)) and np.isfinite(best.get("naive", np.nan)):
+            need = best["breakeven"] - best["naive"]
+            width = (best["margin_hi"] - best["margin_lo"]) if np.isfinite(best["margin_hi"]) else np.nan
+            print(f"\nScale check on '{best['variant']}':")
+            print(f"  edge needed to be worth trading : {100*need:+.1f}pp over naive")
+            if np.isfinite(width):
+                print(f"  width of what we can measure    : {100*width:.1f}pp")
+                if width > abs(need) * 2:
+                    print("  -> the measurement is far coarser than the edge that would pay.\n"
+                          "     More calendar time alone is slow; more registered instruments\n"
+                          "     adds independent calls per day and narrows this faster.")
 
     path = CONFIG.paths.reports_dir / "research.json"
     path.parent.mkdir(parents=True, exist_ok=True)

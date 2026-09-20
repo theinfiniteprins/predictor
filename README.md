@@ -59,6 +59,39 @@ Three measurement traps this project explicitly guards against:
   the bootstrap lower bound above zero. Otherwise `fire_threshold` is `null` and the
   model stays silent. Silence is a correct output, not a failure — the dashboard's
   "Is it actually working?" card says which state you're in and why.
+- **Testing the same idea every night.** The gate re-runs on every retrain, so at
+  alpha=0.05 a false pass becomes near-certain over a year of daily runs. Three
+  compounding guards: the threshold is chosen on older sessions and must replicate on a
+  held-out `confirm_days` window; it must pass `min_consecutive_passes` retrains in a
+  row; and it must clear the **break-even** precision implied by the barrier width and
+  costs, because beating a baseline while still losing money is not an edge.
+
+### What the research has ruled out so far
+
+Reproduce any of this with `scripts/research.py`.
+
+| Idea | Result |
+|---|---|
+| Barrier width k from 0.3 to 1.5 | No edge at any k. The break-even gap barely moves — P(touch) and break-even scale together |
+| Denser target (sign of the 15:20 return, ~10x more directional rows) | No edge. 48.5% accuracy vs a 59.6% majority baseline |
+| Pooling across 12 liquid NSE names (14,868 rows) | **No edge, and pooling did not help accuracy**: 47.9% pooled vs 48.7% solo on identical rows |
+| Momentum / mean-reversion rules | No edge |
+| Uniqueness weights, feature reduction, heavy regularisation | No edge |
+
+Two numbers worth knowing:
+
+- **The bar is low.** Break-even needs only **~0.6–1.1pp** of precision above the naive
+  baseline (at k=0.6 and k=1.0 respectively). Timeouts resolve near flat, so they cost
+  little — it is the opposite-barrier touches that pay for the wins.
+- **But we cannot see that finely.** At the observed rate of ~0.83 directional calls per
+  calendar day, detecting even a *5pp* edge takes on the order of 1,000 sessions. The
+  measurement is far coarser than the edge that would pay for itself.
+
+That gap is the real constraint, and it points at the one lever that actually moves:
+evaluating across 12 instruments instead of one **halved** the confidence-interval width
+on the same 44 days (0.219 → 0.112). Registering more instruments does not make the
+model smarter — the pooling test says it does not — but it buys independent calls per
+calendar day, which is how you find out sooner.
 
 ## Phase 0 parameters (finalized)
 

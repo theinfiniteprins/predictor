@@ -63,8 +63,14 @@ def main() -> None:
         return
 
     side = "UP" if pred == 1 else "DOWN"
-    if bundle["meta"] is None or bundle.get("fire_threshold") is None:
-        log.info("%s  ->  primary says %s %s, but meta-model not available yet (need more history)",
+    if bundle["meta"] is None:
+        log.info("%s  ->  primary leans %s %s, but there is no confidence filter yet "
+                 "(not enough directional history to fit one) - NO CALL",
+                 entry_ts.strftime("%Y-%m-%d %H:%M"), side, pdict)
+        return
+    if bundle.get("fire_threshold") is None:
+        log.info("%s  ->  primary leans %s %s, but the model has not proven an edge, "
+                 "so it is not making live calls - NO CALL",
                  entry_ts.strftime("%Y-%m-%d %H:%M"), side, pdict)
         return
 

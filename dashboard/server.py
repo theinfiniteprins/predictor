@@ -259,10 +259,32 @@ def _edge_summary(card: dict, edge: dict) -> dict:
     need_n = edge.get("min_trades_required", 30)
     need_d = edge.get("min_days_required", 15)
 
+    gate = card.get("fire_gate") or {}
+    passes, need_passes = gate.get("consecutive_passes", 0), gate.get("passes_required", 0)
+
     if edge.get("has_edge"):
         return {
             "state": "proven", "headline": "Beating the simple baseline",
             "detail": edge.get("verdict", ""),
+            "firing": firing,
+        }
+    if edge.get("beats_naive") and not edge.get("clears_breakeven"):
+        return {
+            "state": "no_edge",
+            "headline": "Better than guessing, but not after costs",
+            "detail": edge.get("verdict") or (
+                "It edges out a simple rule, but not by enough to cover trading costs, "
+                "so acting on it would still lose money."),
+            "firing": firing,
+        }
+    if need_passes and 0 < passes < need_passes:
+        return {
+            "state": "insufficient",
+            "headline": f"Promising — confirming ({passes} of {need_passes})",
+            "detail": ("It passed the evidence check this time. Because the check runs "
+                       "again after every retrain, it has to pass several times in a row "
+                       "before any live calls are switched on — that is what stops a "
+                       "single lucky result from turning into real signals."),
             "firing": firing,
         }
     if n < need_n or days < need_d:

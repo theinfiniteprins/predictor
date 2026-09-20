@@ -22,17 +22,30 @@ log = get_logger("calendar")
 
 IST = ZoneInfo(CONFIG.session.timezone)
 
-# Best-effort fallback (verify against https://www.nseindia.com/resources/exchange-communication-holidays).
-# Only used if the refreshed JSON is absent.
+# Fallback used when the refreshed JSON is absent - which is the normal case for the
+# CLOUD COLLECTOR, since data/ is gitignored and never reaches the GitHub Actions
+# runner. So this list is what decides whether the collector polls on any given day.
+#
+# A wrong entry here is expensive and silent: market_is_open() returns False all day,
+# the collector no-ops, and that session's 1-minute data is lost permanently - on a
+# project whose entire bottleneck is data depth. Missing a real holiday is harmless by
+# comparison (yfinance simply returns nothing).
+#
+# 2026 entries below are the NSE **equity (CM) segment** list, cross-checked against
+# observed market data. Do not paste in bank/currency-segment holidays: those close the
+# CD/CBM segments while equity trades normally, and merging them is exactly the bug
+# that marked 5 real trading days as holidays.
+# Refresh with: python scripts/refresh_calendar.py
 _FALLBACK_HOLIDAYS: set[str] = {
     # 2025
     "2025-02-26", "2025-03-14", "2025-03-31", "2025-04-10", "2025-04-14",
     "2025-04-18", "2025-05-01", "2025-08-15", "2025-08-27", "2025-10-02",
     "2025-10-21", "2025-10-22", "2025-11-05", "2025-12-25",
-    # 2026 (provisional — MUST be refreshed from NSE once published)
-    "2026-01-26", "2026-03-06", "2026-03-25", "2026-04-01", "2026-04-03",
-    "2026-04-14", "2026-05-01", "2026-08-15", "2026-10-02", "2026-11-09",
-    "2026-12-25",
+    # 2026 — NSE equity segment, verified 2026-09-20
+    "2026-01-15", "2026-01-26", "2026-02-15", "2026-03-03", "2026-03-21",
+    "2026-03-26", "2026-03-31", "2026-04-03", "2026-04-14", "2026-05-01",
+    "2026-05-28", "2026-06-26", "2026-08-15", "2026-09-14", "2026-10-02",
+    "2026-10-20", "2026-11-08", "2026-11-10", "2026-11-24", "2026-12-25",
 }
 
 _HOLIDAY_FILE = CONFIG.paths.reference / "nse_holidays.json"

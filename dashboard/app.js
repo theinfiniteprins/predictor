@@ -304,7 +304,7 @@
     `;
   }
 
-  function renderBacktest(b) {
+  function renderBacktest(b, model) {
     const el = document.querySelector("#card-backtest .card-body");
     if (!b) {
       el.innerHTML = `<p class="muted">No backtest yet.</p>`;
@@ -312,8 +312,14 @@
     }
     const h = b.headline || {};
     const tone = !h.n_trades ? "neutral" : (h.win_rate ?? 0) >= 0.5 ? "good" : "warn";
+    // The sweep always reports a top-slice, but the live system may be gated off.
+    // Saying "12 trades" next to a silent model reads as if it is trading.
+    const silent = model && model.fire_threshold == null;
     el.innerHTML = `
       ${verdictBox(b.plain_verdict, tone)}
+      ${silent ? `<p class="muted" style="margin:0 0 0.6rem">
+        These are <strong>what-if</strong> numbers: they show what the top slice of calls
+        would have done. The live model is currently silent and placing none of them.</p>` : ""}
       ${statRow("Simulated trades", h.n_trades ?? 0)}
       ${statRow("Trades per day", h.trades_per_day ? h.trades_per_day.toFixed(2) : "0")}
       ${statRow("Win rate", pct(h.win_rate))}
@@ -579,7 +585,7 @@
       renderDataset(data.dataset);
       renderModel(data.model);
       renderEdge(data.model);
-      renderBacktest(data.backtest);
+      renderBacktest(data.backtest, data.model);
       renderPaper(data.paper_trading);
       renderSchedule(data.scheduled_task);
       renderLogTail(data.log_tail);

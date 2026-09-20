@@ -66,6 +66,15 @@ meta:                           # Phase 5
   bootstrap_samples: 2000
   significance_alpha: 0.05
 
+  # Two more guards, because the gate is re-run on every nightly retrain and a test
+  # repeated ~250 times a year passes by luck sooner or later:
+  #   confirm_days        - most recent sessions held out of threshold SELECTION; the
+  #                         chosen cutoff must also show a positive margin there.
+  #   min_consecutive_passes - how many retrains in a row must pass before a threshold
+  #                         is actually saved. Counter lives in the model card.
+  confirm_days: 20
+  min_consecutive_passes: 3
+
 paths:
   data_dir: "data"
   models_dir: "models"

@@ -26,6 +26,42 @@ _CARRY = ["day", "t_touch", "entry_price", "sigma_effective", "k", "upper", "low
           "touch_price", "ret_at_touch", "reason"]
 
 
+def _require_consecutive_passes(
+    fire_threshold: float | None, gate: dict, min_passes: int
+) -> tuple[float | None, dict]:
+    """Don't act on the first pass - the gate is re-run on every nightly retrain.
+
+    Re-testing the same hypothesis ~250 times a year makes a one-off pass at
+    alpha=0.05 meaningless on its own. Requiring the edge to survive several
+    consecutive retrains (on a dataset that grows each day) is what turns a single
+    lucky look into something worth acting on. The counter lives in the previous
+    model card, so a wiped models/ directory resets to the cautious end.
+    """
+    prev = 0
+    card_path = CONFIG.paths.models_dir / "model_card.json"
+    if card_path.exists():
+        try:
+            prev = int((json.loads(card_path.read_text(encoding="utf-8"))
+                        .get("fire_gate") or {}).get("consecutive_passes", 0))
+        except (ValueError, TypeError, json.JSONDecodeError):
+            prev = 0
+
+    passes = prev + 1 if fire_threshold is not None else 0
+    gate = {**gate, "consecutive_passes": passes, "passes_required": min_passes}
+
+    if fire_threshold is not None and passes < min_passes:
+        gate["has_edge"] = False
+        gate["verdict"] = (
+            f"{gate.get('verdict', 'edge detected')} - but this is only pass "
+            f"{passes} of {min_passes} required on consecutive retrains, so it "
+            "stays silent for now")
+        log.info("edge detected but holding fire: pass %d of %d", passes, min_passes)
+        return None, gate
+    if fire_threshold is not None:
+        log.info("edge confirmed on %d consecutive retrains - firing is now enabled", passes)
+    return fire_threshold, gate
+
+
 def train_and_validate(n_trials: int = 0, holdout_days: int = 0) -> pd.DataFrame:
     df = load_dataset()
     if holdout_days:
@@ -80,7 +116,10 @@ def train_and_validate(n_trials: int = 0, holdout_days: int = 0) -> pd.DataFrame
         fire_threshold, gate = choose_fire_threshold(
             oof, min_trades=m.min_fire_trades, min_days=m.min_fire_days,
             n_boot=m.bootstrap_samples, alpha=m.significance_alpha,
+            confirm_days=m.confirm_days,
         )
+        fire_threshold, gate = _require_consecutive_passes(
+            fire_threshold, gate, m.min_consecutive_passes)
     else:
         dir_scores = oof.loc[oof["primary_pred"].fillna(0) != 0, "meta_score"].dropna()
         fire_threshold = (

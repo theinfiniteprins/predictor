@@ -85,6 +85,28 @@ def _precision(df: pd.DataFrame) -> float:
     return float((df["primary_pred"] == df["label"]).mean())
 
 
+def breakeven_precision(fired: pd.DataFrame, cost: float = ROUND_TRIP_COST) -> float:
+    """Directional precision a set of calls must reach just to cover costs.
+
+    Take a side on every call. Of the P(touch) outcomes that resolve at a barrier you
+    win a fraction p and lose (P(touch) - p), each worth roughly the barrier
+    half-width; timeouts resolve near flat and wash out. Setting expected P&L to zero:
+
+        p * half - (P_touch - p) * half - cost = 0   ->   p = P_touch/2 + cost/(2*half)
+
+    Being statistically better than the naive baseline is not the same as being worth
+    trading: the naive baseline itself usually sits *below* this line. A gate that only
+    checked significance could happily fire a real-but-unprofitable edge.
+    """
+    if fired.empty or "sigma_effective" not in fired.columns:
+        return np.nan
+    half = float((fired["sigma_effective"] * fired.get("k", 1.0)).median())
+    if not np.isfinite(half) or half <= 0:
+        return np.nan
+    p_touch = float((fired["label"] != 0).mean())
+    return p_touch / 2.0 + cost / (2.0 * half)
+
+
 def edge_report(
     fired: pd.DataFrame,
     n_boot: int = DEFAULT_N_BOOT,
@@ -124,8 +146,13 @@ def edge_report(
     m_lo, m_med, m_hi = day_block_bootstrap(fired, margin, n_boot, alpha)
     p_lo, _, p_hi = day_block_bootstrap(fired, _precision, n_boot, alpha)
 
+    # Two separate bars: better than doing nothing clever, AND worth the costs.
+    breakeven = breakeven_precision(fired, cost=cost)
+    clears_breakeven = bool(np.isfinite(breakeven) and np.isfinite(p_lo) and p_lo > breakeven)
+
     enough = n >= min_trades and n_days >= min_days
-    has_edge = bool(enough and np.isfinite(m_lo) and m_lo > 0)
+    beats_naive = bool(np.isfinite(m_lo) and m_lo > 0)
+    has_edge = bool(enough and beats_naive and (clears_breakeven or not np.isfinite(breakeven)))
 
     out.update(
         precision=precision,
@@ -134,6 +161,9 @@ def edge_report(
         naive_side="up" if side == 1 else "down",
         margin=precision - naive,
         margin_ci=[m_lo, m_hi],
+        breakeven_precision=breakeven,
+        clears_breakeven=clears_breakeven,
+        beats_naive=beats_naive,
         has_edge=has_edge,
     )
 
@@ -153,7 +183,13 @@ def edge_report(
     elif has_edge:
         out["verdict"] = (
             f"beats the naive 'always {out['naive_side']}' baseline by "
-            f"{100*out['margin']:.1f}pp (95% CI {100*m_lo:+.1f} to {100*m_hi:+.1f}pp)")
+            f"{100*out['margin']:.1f}pp (95% CI {100*m_lo:+.1f} to {100*m_hi:+.1f}pp) "
+            f"and clears the {100*breakeven:.1f}% break-even bar")
+    elif beats_naive and not clears_breakeven:
+        out["verdict"] = (
+            f"beats the naive baseline but not the costs - precision {100*precision:.1f}% "
+            f"(lower bound {100*p_lo:.1f}%) against a {100*breakeven:.1f}% break-even bar, "
+            "so trading it would still lose money")
     else:
         out["verdict"] = (
             f"no measurable edge - {100*precision:.1f}% vs naive {100*naive:.1f}%, "
@@ -168,12 +204,25 @@ def choose_fire_threshold(
     n_boot: int = DEFAULT_N_BOOT,
     alpha: float = DEFAULT_ALPHA,
     n_grid: int = 9,
+    confirm_days: int = 20,
 ) -> tuple[float | None, dict]:
     """Pick the meta-score cutoff to fire at - or None, meaning fire nothing.
 
     ``candidates`` = OOF rows where the primary named a direction, with a meta_score.
-    We sweep a small grid of cutoffs and keep the best, so alpha is Bonferroni-adjusted
-    by the grid size: picking the best of N tries needs a correspondingly higher bar.
+
+    Three separate ways this could wave through noise, and what stops each:
+
+    1. *Picking the best of several cutoffs.* We sweep a small grid, so alpha is
+       Bonferroni-adjusted by the grid size.
+    2. *Choosing the cutoff on the same data that judges it.* The most recent
+       ``confirm_days`` sessions are held out of selection entirely; the winning
+       threshold then has to show a positive margin on that untouched window too.
+       Selection happens on older days, confirmation on newer ones - never the reverse.
+    3. *Looking every single day.* Retraining nightly means ~250 tests a year, and at
+       alpha=0.05 a false pass becomes near-certain. That one can't be solved inside a
+       single run: the pipeline additionally requires the gate to pass on several
+       consecutive retrains (see meta.min_consecutive_passes) before a threshold is
+       ever saved.
 
     Returning None is a normal, expected outcome - it means the evidence does not yet
     support making live calls, and the system should stay silent.
@@ -183,12 +232,23 @@ def choose_fire_threshold(
     if cand.empty:
         return None, {"reason": "no scored directional candidates", "has_edge": False}
 
-    grid = np.unique(np.quantile(cand["meta_score"], np.linspace(0.0, 0.9, n_grid)))
+    # split selection (older) from confirmation (most recent sessions)
+    days = np.sort(pd.unique(cand["day"]))
+    confirm_set, select = pd.DataFrame(columns=cand.columns), cand
+    if confirm_days > 0 and len(days) > confirm_days:
+        cutoff = days[-confirm_days]
+        select = cand[cand["day"] < cutoff]
+        confirm_set = cand[cand["day"] >= cutoff]
+    if select.empty:
+        return None, {"reason": "not enough history to split selection from confirmation",
+                      "has_edge": False, "n_days_available": int(len(days))}
+
+    grid = np.unique(np.quantile(select["meta_score"], np.linspace(0.0, 0.9, n_grid)))
     alpha_adj = alpha / max(len(grid), 1)
 
     best_thr, best_rep, best_lo = None, None, -np.inf
     for thr in grid:
-        sel = cand[cand["meta_score"] >= thr]
+        sel = select[select["meta_score"] >= thr]
         rep = edge_report(sel, n_boot=n_boot, alpha=alpha_adj,
                           min_trades=min_trades, min_days=min_days)
         lo = rep.get("margin_ci", [np.nan])[0]
@@ -199,11 +259,35 @@ def choose_fire_threshold(
         return None, {"reason": "no threshold produced an evaluable set", "has_edge": False}
 
     best_rep = {**best_rep, "threshold": best_thr, "grid_size": int(len(grid)),
-                "alpha_adjusted": alpha_adj}
-    if best_rep.get("has_edge"):
-        log.info("fire threshold %.4f cleared the evidence bar: %s", best_thr, best_rep["verdict"])
-        return best_thr, best_rep
+                "alpha_adjusted": alpha_adj, "confirm_days": confirm_days}
 
-    log.info("no fire threshold cleared the evidence bar - the model will stay silent (%s)",
-             best_rep.get("verdict"))
-    return None, best_rep
+    if not best_rep.get("has_edge"):
+        log.info("no fire threshold cleared the evidence bar - staying silent (%s)",
+                 best_rep.get("verdict"))
+        return None, best_rep
+
+    # --- out-of-selection confirmation -------------------------------------
+    conf = confirm_set[confirm_set["meta_score"] >= best_thr] if len(confirm_set) else confirm_set
+    conf_rep = edge_report(conf, n_boot=n_boot, alpha=alpha,
+                           min_trades=1, min_days=1) if len(conf) else None
+    best_rep["confirmation"] = conf_rep
+    if conf_rep is None or conf_rep["n_fired"] == 0:
+        best_rep["has_edge"] = False
+        best_rep["verdict"] = (
+            f"{best_rep['verdict']} - but no calls landed in the {confirm_days}-day "
+            "confirmation window, so it is unconfirmed and stays silent")
+        log.info("threshold %.4f passed selection but had nothing to confirm on", best_thr)
+        return None, best_rep
+
+    if not (np.isfinite(conf_rep["margin"]) and conf_rep["margin"] > 0):
+        best_rep["has_edge"] = False
+        best_rep["verdict"] = (
+            f"{best_rep['verdict']} - but it did NOT replicate on the held-out "
+            f"{confirm_days}-day window ({100*conf_rep['margin']:+.1f}pp there), "
+            "so it stays silent")
+        log.info("threshold %.4f failed out-of-selection confirmation", best_thr)
+        return None, best_rep
+
+    log.info("fire threshold %.4f cleared selection AND confirmation: %s",
+             best_thr, best_rep["verdict"])
+    return best_thr, best_rep
