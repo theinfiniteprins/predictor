@@ -40,7 +40,8 @@ def _recent_minute_bars(ticker: str, lookback: int = 420) -> pd.DataFrame:
     df = df.rename(columns=str.lower)
     idx = pd.DatetimeIndex(df.index)
     df.index = (idx.tz_localize("UTC") if idx.tz is None else idx).tz_convert(IST)
-    df = df.iloc[:-1]                       # drop the still-forming current minute
+    if market_is_open():
+        df = df.iloc[:-1]                       # drop the still-forming current minute
     df = df.tail(lookback)[[c for c in _OHLCV if c in df.columns]]
     df.index.name = "bar_time"
     return df
@@ -67,7 +68,8 @@ def collect_tick(tickers: list[str] | None = None, lookback: int = 420) -> int:
         return 0
 
     rows = pd.concat(frames, ignore_index=True)
-    append_bars(rows, day=now.date())
+    target_day = rows["bar_time"].dt.date.max() if "bar_time" in rows.columns and not rows.empty else now.date()
+    append_bars(rows, day=target_day)
     latest = rows.sort_values("bar_time").groupby("ticker").last()["close"]
     log.info("poll %s  %d bar-rows  %s", now.strftime("%H:%M:%S"), len(rows),
              "  ".join(f"{k}={v:.2f}" for k, v in latest.items()))
